@@ -29,6 +29,11 @@ let package = Package(
             ],
             path: "Source/Network"
         ),
+        .testTarget(
+            name: "SAKNetworkTest",
+            dependencies: ["SAKNetwork"],
+            path: "Tests/Network"
+        ),
 
         // Util
         .target(

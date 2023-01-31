@@ -25,8 +25,29 @@ open class GraphqlFactory {
 
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601Complete
-
         client = ApolloClient(url: url)
+    }
+
+    public func sendQuery<T: Codable>(query: some GraphQLQuery) -> AnyPublisher<T, ApiError> {
+        Future<T, ApiError> { promise in
+            self.client.fetch(query: query, queue: self.queue) { result in
+                switch result {
+                case let .success(response):
+                    let json = response.data?.__data._data
+                    let value: T? = self.jsonToCodable(json: json)
+
+                    guard let value else {
+                        promise(.failure(.unknown("Empty response")))
+                        return
+                    }
+
+                    promise(.success(value))
+
+                case let .failure(error):
+                    promise(.failure(.unknown(error.localizedDescription)))
+                }
+            }
+        }.eraseToAnyPublisher()
     }
 
     public func sendMutation<T: Codable>(mutation: some GraphQLMutation) -> AnyPublisher<T, ApiError> {
