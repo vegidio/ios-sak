@@ -25,7 +25,6 @@ let package = Package(
             dependencies: [
                 "Alamofire",
                 .product(name: "Apollo", package: "apollo-ios"),
-                .product(name: "ApolloAPI", package: "apollo-ios"),
                 "SAKUtil"
             ],
             path: "Source/Network"

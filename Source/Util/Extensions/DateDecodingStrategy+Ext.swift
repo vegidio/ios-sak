@@ -1,3 +1,4 @@
+// swiftlint:disable:this file_name
 //
 //  DateDecodingStrategy+Ext.swift
 //  iOS Swiss Army Knife
