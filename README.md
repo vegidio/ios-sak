@@ -2,7 +2,7 @@
 
 Swift Package where I keep my custom classes, extensions and other files that help me during the development of my iOS projects.
 
-## 🧰 Packages
+## 🧰 Toolbox
 
 The Swiss Army Knife is currently divided in 3 packages:
 

@@ -11,12 +11,17 @@ import Combine
 import Foundation
 
 open class GraphqlFactory {
-    private let client: ApolloClient
+    // swiftlint:disable:next implicitly_unwrapped_optional
+    private var client: ApolloClient!
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let queue = DispatchQueue.global(qos: .background)
+    private let headerInterceptor = GraphqlHeaderInterceptor()
 
-    public var headers: [String: String] = [:]
+    public var headers: [String: String] {
+        get { headerInterceptor.headers }
+        set(value) { headerInterceptor.headers = value }
+    }
 
     public init(url: String) {
         guard let url = URL(string: url) else {
@@ -25,11 +30,18 @@ open class GraphqlFactory {
 
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601Complete
-        client = ApolloClient(url: url)
+        client = createClient(url: url)
     }
 
-    public func sendQuery<T: Codable>(query: some GraphQLQuery) -> AnyPublisher<T, ApiError> {
-        Future<T, ApiError> { promise in
+    public func sendQuery<T: Codable>(
+        query: some GraphQLQuery,
+        headers: [String: String] = [:]
+    ) -> AnyPublisher<T, ApiError> {
+        Future<T, ApiError> { [weak self] promise in
+            guard let self else { return }
+            let name = "\(query)"
+            self.headerInterceptor.requestHeaders[name] = headers
+
             self.client.fetch(query: query, queue: self.queue) { result in
                 switch result {
                 case let .success(response):
@@ -37,7 +49,8 @@ open class GraphqlFactory {
                     let value: T? = self.jsonToCodable(json: json)
 
                     guard let value else {
-                        promise(.failure(.unknown("Empty response")))
+                        let error = response.errors?.first
+                        promise(.failure(ApiError.unknown(error?.message ?? "Unknown")))
                         return
                     }
 
@@ -50,8 +63,15 @@ open class GraphqlFactory {
         }.eraseToAnyPublisher()
     }
 
-    public func sendMutation<T: Codable>(mutation: some GraphQLMutation) -> AnyPublisher<T, ApiError> {
-        Future<T, ApiError> { promise in
+    public func sendMutation<T: Codable>(
+        mutation: some GraphQLMutation,
+        headers: [String: String] = [:]
+    ) -> AnyPublisher<T, ApiError> {
+        Future<T, ApiError> { [weak self] promise in
+            guard let self else { return }
+            let name = "\(mutation)"
+            self.headerInterceptor.requestHeaders[name] = headers
+
             self.client.perform(mutation: mutation, queue: self.queue) { result in
                 switch result {
                 case let .success(response):
@@ -59,7 +79,8 @@ open class GraphqlFactory {
                     let value: T? = self.jsonToCodable(json: json)
 
                     guard let value else {
-                        promise(.failure(.unknown("Empty response")))
+                        let error = response.errors?.first
+                        promise(.failure(ApiError.unknown(error?.message ?? "Unknown")))
                         return
                     }
 
@@ -73,6 +94,19 @@ open class GraphqlFactory {
     }
 
     // MARK: - Private methods
+
+    private func createClient(url: URL) -> ApolloClient {
+        let cache = InMemoryNormalizedCache()
+        let store = ApolloStore(cache: cache)
+        let provider = CustomInterceptorProvider(store: store, customInterceptors: [headerInterceptor])
+
+        let requestChainTransport = RequestChainNetworkTransport(
+            interceptorProvider: provider,
+            endpointURL: url
+        )
+
+        return ApolloClient(networkTransport: requestChainTransport, store: store)
+    }
 
     private func jsonToCodable<T: Codable>(json: JSONObject?) -> T? {
         guard

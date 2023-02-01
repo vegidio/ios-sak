@@ -41,6 +41,11 @@ let package = Package(
             dependencies: [],
             path: "Source/Util"
         ),
+        .testTarget(
+            name: "SAKUtilTest",
+            dependencies: ["SAKUtil"],
+            path: "Tests/Util"
+        ),
 
         // View
         .target(
