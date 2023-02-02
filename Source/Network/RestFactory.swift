@@ -10,15 +10,21 @@ import Combine
 import Foundation
 import SAKUtil
 
+public typealias CacheConfig = (capacity: Int, path: String)
+
 open class RestFactory {
     private let baseUrl: URL
+    private let session: Session
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let queue = DispatchQueue.global(qos: .background)
 
     public var headers: [String: String] = [:]
 
-    public init(baseUrl: String) {
+    public init(
+        baseUrl: String,
+        cacheConfig: CacheConfig?
+    ) {
         guard let url = URL(string: baseUrl) else {
             fatalError("The REST base URL is invalid.")
         }
@@ -26,6 +32,22 @@ open class RestFactory {
         self.baseUrl = url
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601Complete
+
+        let configuration = URLSessionConfiguration.af.default
+
+        // Adding cache support
+        if let cacheConfig {
+            let cache = URLCache(
+                memoryCapacity: cacheConfig.capacity,
+                diskCapacity: cacheConfig.capacity,
+                diskPath: cacheConfig.path
+            )
+
+            configuration.urlCache = cache
+            configuration.requestCachePolicy = .returnCacheDataElseLoad
+        }
+
+        session = Alamofire.Session(configuration: configuration)
     }
 
     /// Sends a request that doesn't expect a response body
@@ -37,7 +59,7 @@ open class RestFactory {
     ) -> AnyPublisher<Void, ApiError> {
         let (url, paramEncoder, mergedHeaders) = normalizeParameters(.get, uri, headers)
 
-        return AF.request(
+        return session.request(
             url,
             method: method,
             parameters: params,
@@ -60,7 +82,7 @@ open class RestFactory {
     ) -> AnyPublisher<T, ApiError> {
         let (url, paramEncoder, mergedHeaders) = normalizeParameters(.get, uri, headers)
 
-        return AF.request(
+        return session.request(
             url,
             method: method,
             parameters: params,
@@ -71,6 +93,10 @@ open class RestFactory {
         .value()
         .mapError { ApiError.unknown($0.localizedDescription) }
         .eraseToAnyPublisher()
+    }
+
+    public func clearCache() {
+        // TODO:
     }
 
     // MARK: - Private methods

@@ -18,6 +18,11 @@ open class GraphqlFactory {
     private let queue = DispatchQueue.global(qos: .background)
     private let headerInterceptor = GraphqlHeaderInterceptor()
 
+    private let store: ApolloStore = {
+        let cache = InMemoryNormalizedCache()
+        return ApolloStore(cache: cache)
+    }()
+
     public var headers: [String: String] {
         get { headerInterceptor.headers }
         set(value) { headerInterceptor.headers = value }
@@ -93,13 +98,14 @@ open class GraphqlFactory {
         }.eraseToAnyPublisher()
     }
 
+    public func clearCache() {
+        store.clearCache()
+    }
+
     // MARK: - Private methods
 
     private func createClient(url: URL) -> ApolloClient {
-        let cache = InMemoryNormalizedCache()
-        let store = ApolloStore(cache: cache)
         let provider = CustomInterceptorProvider(store: store, customInterceptors: [headerInterceptor])
-
         let requestChainTransport = RequestChainNetworkTransport(
             interceptorProvider: provider,
             endpointURL: url
