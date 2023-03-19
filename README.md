@@ -14,8 +14,8 @@ The Swiss Army Knife is currently divided in 3 packages:
 ### SAKUtil
 
 * __DateDecodingStrategy.iso8601Complete:__ a full decoding implementation of date ISO8601.
+* __Duration:__ enum that makes time conversions easier.
 * __Inject:__ property wrappers that can used to do setter based dependency injection.
-* __TimeUnit:__ enum that makes time conversions easier.
 
 ### SAKView
 

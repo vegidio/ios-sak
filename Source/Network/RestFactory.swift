@@ -10,11 +10,12 @@ import Combine
 import Foundation
 import SAKUtil
 
-public typealias CacheConfig = (capacity: Int, path: String)
+public typealias CacheConfig = (path: String, duration: Duration)
 
 open class RestFactory {
     private let baseUrl: URL
     private let session: Session
+    private let cacheConfig: CacheConfig?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let queue = DispatchQueue.global(qos: .background)
@@ -23,7 +24,7 @@ open class RestFactory {
 
     public init(
         baseUrl: String,
-        cacheConfig: CacheConfig?
+        cacheConfig: CacheConfig? = nil
     ) {
         guard let url = URL(string: baseUrl) else {
             fatalError("The REST base URL is invalid.")
@@ -33,13 +34,14 @@ open class RestFactory {
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601Complete
 
+        self.cacheConfig = cacheConfig
         let configuration = URLSessionConfiguration.af.default
 
         // Adding cache support
         if let cacheConfig {
             let cache = URLCache(
-                memoryCapacity: cacheConfig.capacity,
-                diskCapacity: cacheConfig.capacity,
+                memoryCapacity: 10_000_000,
+                diskCapacity: 10_000_000,
                 diskPath: cacheConfig.path
             )
 
@@ -58,6 +60,7 @@ open class RestFactory {
         headers: HTTPHeaders = HTTPHeaders()
     ) -> AnyPublisher<Void, ApiError> {
         let (url, paramEncoder, mergedHeaders) = normalizeParameters(.get, uri, headers)
+        cleanExpiredCache()
 
         return session.request(
             url,
@@ -81,6 +84,7 @@ open class RestFactory {
         headers: HTTPHeaders = HTTPHeaders()
     ) -> AnyPublisher<T, ApiError> {
         let (url, paramEncoder, mergedHeaders) = normalizeParameters(.get, uri, headers)
+        cleanExpiredCache()
 
         return session.request(
             url,
@@ -96,7 +100,7 @@ open class RestFactory {
     }
 
     public func clearCache() {
-        // TODO:
+        session.sessionConfiguration.urlCache?.removeAllCachedResponses()
     }
 
     // MARK: - Private methods
@@ -112,5 +116,12 @@ open class RestFactory {
         let mergedHeaders = HTTPHeaders(self.headers.merging(headers.dictionary) { _, new in new })
 
         return (url, paramEncoder, mergedHeaders)
+    }
+
+    private func cleanExpiredCache() {
+        if let duration = cacheConfig?.duration {
+            let expirationThreshold = Date(timeIntervalSinceNow: -duration.seconds)
+            session.sessionConfiguration.urlCache?.removeCachedResponses(since: expirationThreshold)
+        }
     }
 }
