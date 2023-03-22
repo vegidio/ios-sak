@@ -132,6 +132,34 @@
                ReferencedContainer = "container:">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "Test"
+               BuildableName = "Test"
+               BlueprintName = "Test"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SAKTest"
+               BuildableName = "SAKTest"
+               BlueprintName = "SAKTest"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -157,6 +185,16 @@
                BlueprintIdentifier = "SAKUtilTest"
                BuildableName = "SAKUtilTest"
                BlueprintName = "SAKUtilTest"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SAKViewTest"
+               BuildableName = "SAKViewTest"
+               BlueprintName = "SAKViewTest"
                ReferencedContainer = "container:">
             </BuildableReference>
          </TestableReference>

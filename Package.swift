@@ -57,6 +57,11 @@ let package = Package(
             ],
             path: "Source/View"
         ),
+        .testTarget(
+            name: "SAKViewTest",
+            dependencies: ["SAKView"],
+            path: "Tests/View"
+        ),
 
         // Test
         .target(
