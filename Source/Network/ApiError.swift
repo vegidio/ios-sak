@@ -10,5 +10,5 @@ import Foundation
 public enum ApiError: Error {
     case invalidUrl
     case codable(Codable)
-    case unknown(String)
+    case general(Error?)
 }

@@ -54,15 +54,15 @@ open class GraphqlFactory {
                     let value: T? = self.jsonToCodable(json: json)
 
                     guard let value else {
-                        let error = response.errors?.first
-                        promise(.failure(ApiError.unknown(error?.message ?? "Unknown")))
+                        let error = response.errors?.first as Error?
+                        promise(.failure(ApiError.general(error)))
                         return
                     }
 
                     promise(.success(value))
 
                 case let .failure(error):
-                    promise(.failure(.unknown(error.localizedDescription)))
+                    promise(.failure(.general(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -84,15 +84,15 @@ open class GraphqlFactory {
                     let value: T? = self.jsonToCodable(json: json)
 
                     guard let value else {
-                        let error = response.errors?.first
-                        promise(.failure(ApiError.unknown(error?.message ?? "Unknown")))
+                        let error = response.errors?.first as Error?
+                        promise(.failure(ApiError.general(error)))
                         return
                     }
 
                     promise(.success(value))
 
                 case let .failure(error):
-                    promise(.failure(.unknown(error.localizedDescription)))
+                    promise(.failure(.general(error)))
                 }
             }
         }.eraseToAnyPublisher()

@@ -36,6 +36,7 @@ open class RestFactory {
 
         self.cacheConfig = cacheConfig
         let configuration = URLSessionConfiguration.af.default
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
 
         // Adding cache support
         if let cacheConfig {
@@ -72,7 +73,7 @@ open class RestFactory {
         .publishUnserialized(queue: queue)
         .value()
         .map { _ in }
-        .mapError { ApiError.unknown($0.localizedDescription) }
+        .mapError { ApiError.general($0) }
         .eraseToAnyPublisher()
     }
 
@@ -95,7 +96,7 @@ open class RestFactory {
         )
         .publishDecodable(type: T.self, queue: queue, decoder: decoder)
         .value()
-        .mapError { ApiError.unknown($0.localizedDescription) }
+        .mapError { ApiError.general($0) }
         .eraseToAnyPublisher()
     }
 
