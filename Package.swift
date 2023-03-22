@@ -13,8 +13,10 @@ let package = Package(
         .library(name: "Network", targets: ["SAKNetwork"]),
         .library(name: "Util", targets: ["SAKUtil"]),
         .library(name: "View", targets: ["SAKView"]),
+        .library(name: "Test", targets: ["SAKTest"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/airbnb/lottie-ios", branch: "4.1.3"),
         .package(url: "https://github.com/Alamofire/Alamofire", branch: "5.6.4"),
         .package(url: "https://github.com/apollographql/apollo-ios", branch: "1.0.6"),
     ],
@@ -23,8 +25,8 @@ let package = Package(
         .target(
             name: "SAKNetwork",
             dependencies: [
-                "Alamofire",
                 .product(name: "Apollo", package: "apollo-ios"),
+                "Alamofire",
                 "SAKUtil"
             ],
             path: "Source/Network"
@@ -50,8 +52,17 @@ let package = Package(
         // View
         .target(
             name: "SAKView",
-            dependencies: [],
+            dependencies: [
+                .product(name: "Lottie", package: "lottie-ios")
+            ],
             path: "Source/View"
+        ),
+
+        // Test
+        .target(
+            name: "SAKTest",
+            dependencies: [],
+            path: "Source/Test"
         ),
     ]
 )
