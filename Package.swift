@@ -13,8 +13,11 @@ let package = Package(
         .library(name: "GraphQL", targets: ["GraphQL"]),
         .library(name: "Components", targets: ["Components"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.11.1"),
+    ],
     targets: [
-        .target(name: "REST", path: "Sources/REST"),
+        .target(name: "REST", dependencies: ["Alamofire"], path: "Sources/REST"),
         .target(name: "GraphQL", path: "Sources/GraphQL"),
         .target(name: "Components", path: "Sources/Components"),
         .testTarget(name: "RESTTests", dependencies: ["REST"], path: "Tests/RESTTests"),

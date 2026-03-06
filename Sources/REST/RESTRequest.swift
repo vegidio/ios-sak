@@ -6,19 +6,22 @@ public struct RESTRequest: Sendable {
     public var headers: [String: String]
     public var body: Data?
     public var queryParameters: [String: String]
+    public var skipAuth: Bool
 
     public init(
         url: String,
         method: HTTPMethod = .get,
         headers: [String: String] = [:],
         body: Data? = nil,
-        queryParameters: [String: String] = [:]
+        queryParameters: [String: String] = [:],
+        skipAuth: Bool = false
     ) {
         self.url = url
         self.method = method
         self.headers = headers
         self.body = body
         self.queryParameters = queryParameters
+        self.skipAuth = skipAuth
     }
 
     func buildURLRequest() throws -> URLRequest {
@@ -40,6 +43,10 @@ public struct RESTRequest: Sendable {
 
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        if skipAuth {
+            request.setValue("1", forHTTPHeaderField: "X-Skip-Auth")
         }
 
         return request
