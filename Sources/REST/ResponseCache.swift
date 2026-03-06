@@ -34,12 +34,12 @@ actor ResponseCache {
     func invalidate(forKey key: String) {
         storage.removeObject(forKey: key as NSString)
     }
-}
 
-func makeCacheKey(url: String, queryParams: [String: String]) -> String {
-    guard !queryParams.isEmpty else { return url }
-    let sorted = queryParams.sorted { $0.key < $1.key }
-        .map { "\($0.key)=\($0.value)" }
-        .joined(separator: "&")
-    return "\(url)?\(sorted)"
+    static func makeKey(url: String, queryParams: [String: String]) -> String {
+        guard !queryParams.isEmpty else { return url }
+        let sorted = queryParams.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "&")
+        return "\(url)?\(sorted)"
+    }
 }

@@ -1,5 +1,13 @@
 import Foundation
 
+public enum HTTPMethod: String, Sendable {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case patch = "PATCH"
+    case delete = "DELETE"
+}
+
 public struct RESTRequest: Sendable {
     public var url: String
     public var method: HTTPMethod
@@ -50,5 +58,33 @@ public struct RESTRequest: Sendable {
         }
 
         return request
+    }
+}
+
+public extension RESTRequest {
+    /// Creates a request with an `Encodable` body, automatically JSON-encoding it
+    /// and setting `Content-Type: application/json` unless already provided.
+    init<B: Encodable>(
+        url: String,
+        method: HTTPMethod = .post,
+        headers: [String: String] = [:],
+        body encodable: B,
+        encoder: JSONEncoder = JSONEncoder(),
+        queryParameters: [String: String] = [:],
+        skipAuth: Bool = false
+    ) throws {
+        let data = try encoder.encode(encodable)
+        var merged = headers
+        if merged["Content-Type"] == nil {
+            merged["Content-Type"] = "application/json"
+        }
+        self.init(
+            url: url,
+            method: method,
+            headers: merged,
+            body: data as Data?,
+            queryParameters: queryParameters,
+            skipAuth: skipAuth
+        )
     }
 }
