@@ -46,6 +46,11 @@ public struct APIConfiguration: Sendable {
     /// Applies the access token to an outgoing `URLRequest` (e.g. sets the Authorization header).
     public var applyToken: (@Sendable (String, inout URLRequest) -> Void)?
 
+    /// Returns the current stored access token, or `nil` if none is available.
+    /// Used to seed the token coordinator on the first request after sign-in,
+    /// avoiding an unnecessary 401 round-trip.
+    public var getToken: (@Sendable () -> String?)?
+
     public init(
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
@@ -54,7 +59,8 @@ public struct APIConfiguration: Sendable {
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
         refreshToken: (@Sendable () async throws -> String)? = nil,
-        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil
+        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+        getToken: (@Sendable () -> String?)? = nil
     ) {
         self.defaultHeaders = defaultHeaders
         self.retryPolicy = retryPolicy
@@ -64,5 +70,6 @@ public struct APIConfiguration: Sendable {
         self.isUnauthorized = isUnauthorized
         self.refreshToken = refreshToken
         self.applyToken = applyToken
+        self.getToken = getToken
     }
 }

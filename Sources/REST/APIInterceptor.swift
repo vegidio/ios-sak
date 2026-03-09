@@ -9,6 +9,14 @@ actor TokenRefreshCoordinator {
     private(set) var currentToken: String?
     private var ongoingRefresh: Task<String, Error>?
 
+    /// Seeds the coordinator with a stored token when no token is currently held.
+    /// Does not override a freshly refreshed token.
+    func seed(_ token: String) {
+        if currentToken == nil {
+            currentToken = token
+        }
+    }
+
     func refresh(using handler: @escaping @Sendable () async throws -> String) async throws -> String {
         if let existing = ongoingRefresh {
             return try await existing.value
@@ -90,6 +98,13 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
                    expiry.timeIntervalSinceNow < configuration.preemptiveRefreshLeadTime,
                    let refreshHandler = configuration.refreshToken {
                     _ = try await coordinator.refresh(using: refreshHandler)
+                }
+
+                // Seed coordinator from stored token if not yet set (avoids unnecessary 401 on first request after sign-in)
+                if await coordinator.currentToken == nil,
+                   let getToken = configuration.getToken,
+                   let storedToken = getToken() {
+                    await coordinator.seed(storedToken)
                 }
 
                 if let token = await coordinator.currentToken {

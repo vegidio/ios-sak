@@ -58,7 +58,9 @@ public actor RESTClient {
         }
 
         // Use Alamofire but manage validation manually to capture raw Data on errors
-        let dataTask = session.request(urlRequest).serializingData(emptyResponseCodes: [])
+        let dataTask = session.request(urlRequest)
+            .validate()
+            .serializingData(emptyResponseCodes: [])
         let response = await dataTask.response
 
         // Surface network-level errors
