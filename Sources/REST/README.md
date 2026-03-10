@@ -5,7 +5,7 @@ A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/A
 ## Quick start
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration())
+let client = RESTClient(configuration: RESTConfiguration())
 
 struct User: Decodable, Sendable { let id: Int; let name: String }
 
@@ -81,14 +81,14 @@ do {
 
 ## Configuration
 
-All behaviour is controlled through `APIConfiguration`, passed once at init time.
+All behaviour is controlled through `RESTConfiguration`, passed once at init time.
 
 ### Default headers
 
 Headers added to every request. A header already present on an individual request takes priority.
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     defaultHeaders: [
         "Accept": "application/json",
         "X-API-Version": "2"
@@ -101,7 +101,7 @@ let client = RESTClient(configuration: APIConfiguration(
 Failed requests are retried automatically. The default policy retries up to 3 times with a 1-second delay. Set `retryPolicy: nil` to disable.
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     retryPolicy: RetryPolicy(maxAttempts: 5, delay: 2.0)
 ))
 ```
@@ -111,7 +111,7 @@ let client = RESTClient(configuration: APIConfiguration(
 Responses can be cached in memory with a TTL. Pass `cacheable: true` when sending — the second call returns the cached data without hitting the network.
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     cachePolicy: CachePolicy(ttl: 3600)  // cache for 1 hour
 ))
 
@@ -130,7 +130,7 @@ let response: RESTResponse<[User]> = try await client.send(
 Use `applyToken` to inject the token however your API expects it (Bearer header, query parameter, etc.):
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     applyToken: { token, request in
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
@@ -159,7 +159,7 @@ let response: RESTResponse<LoginResponse> = try await client.send(
 Provide `isUnauthorized` to detect auth failures and `refreshToken` to fetch a new token. When a request returns 401, the client refreshes the token once and retries the original request automatically. Concurrent requests that all hit 401 share a single refresh call.
 
 ```swift
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     isUnauthorized: { $0.statusCode == 401 },
     refreshToken: {
         // Use a separate client (no auth) just for the refresh call
@@ -190,7 +190,7 @@ Avoid 401 errors entirely by refreshing the token before it expires. Use `jwtExp
 authStore.accessToken = loginResponse.body.accessToken
 authStore.expiry = jwtExpiryDate(from: loginResponse.body.accessToken)
 
-let client = RESTClient(configuration: APIConfiguration(
+let client = RESTClient(configuration: RESTConfiguration(
     tokenExpiryDate: { authStore.expiry },
     preemptiveRefreshLeadTime: 60,   // refresh 60 s before expiry
     refreshToken: { /* same as above */ },
@@ -207,7 +207,7 @@ let client = RESTClient(configuration: APIConfiguration(
 | `RESTClient` | Main actor — create once, reuse everywhere |
 | `RESTRequest` | Describes a single HTTP request |
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
-| `APIConfiguration` | All client behaviour in one place |
+| `RESTConfiguration` | All client behaviour in one place |
 | `RetryPolicy` | `maxAttempts` + `delay` |
 | `CachePolicy` | `ttl` (seconds) |
 | `RESTError` | Typed error thrown by `send` |

@@ -20,8 +20,8 @@ public struct CachePolicy: Sendable {
     }
 }
 
-/// All configuration for `APIClient`.
-public struct APIConfiguration: Sendable {
+/// All configuration for `RESTClient`.
+public struct RESTConfiguration: Sendable {
     /// Headers added to every outgoing request. Per-request headers override these.
     public var defaultHeaders: [String: String]
 

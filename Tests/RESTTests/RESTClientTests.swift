@@ -190,24 +190,24 @@ struct RESTClientTests {
         #expect(urlRequest.value(forHTTPHeaderField: "X-Skip-Auth") == nil)
     }
 
-    // MARK: - APIConfiguration defaults
+    // MARK: - RESTConfiguration defaults
 
-    @Test("APIConfiguration default retryPolicy has maxAttempts 3 and delay 1.0")
+    @Test("RESTConfiguration default retryPolicy has maxAttempts 3 and delay 1.0")
     func configurationDefaultRetryPolicy() {
-        let config = APIConfiguration()
+        let config = RESTConfiguration()
         #expect(config.retryPolicy?.maxAttempts == 3)
         #expect(config.retryPolicy?.delay == 1.0)
     }
 
-    @Test("APIConfiguration default cachePolicy is nil")
+    @Test("RESTConfiguration default cachePolicy is nil")
     func configurationDefaultCachePolicy() {
-        let config = APIConfiguration()
+        let config = RESTConfiguration()
         #expect(config.cachePolicy == nil)
     }
 
-    @Test("APIConfiguration default getToken is nil")
+    @Test("RESTConfiguration default getToken is nil")
     func configurationDefaultGetToken() {
-        let config = APIConfiguration()
+        let config = RESTConfiguration()
         #expect(config.getToken == nil)
     }
 

@@ -47,10 +47,10 @@ private struct Box<T>: @unchecked Sendable {
 // MARK: - APIInterceptor
 
 final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
-    private let configuration: APIConfiguration
+    private let configuration: RESTConfiguration
     let coordinator: TokenRefreshCoordinator
 
-    init(configuration: APIConfiguration) {
+    init(configuration: RESTConfiguration) {
         self.configuration = configuration
         self.coordinator = TokenRefreshCoordinator()
     }

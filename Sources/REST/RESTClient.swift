@@ -6,7 +6,7 @@ import Alamofire
 ///
 /// Create one `RESTClient` per API domain (typically at app startup) and reuse it:
 /// ```swift
-/// let client = RESTClient(configuration: APIConfiguration(
+/// let client = RESTClient(configuration: RESTConfiguration(
 ///     defaultHeaders: ["X-API-Version": "2"],
 ///     retryPolicy: RetryPolicy(maxAttempts: 3),
 ///     cachePolicy: CachePolicy(ttl: 300),
@@ -18,11 +18,11 @@ import Alamofire
 /// ```
 public actor RESTClient {
     private let session: Session
-    private let configuration: APIConfiguration
+    private let configuration: RESTConfiguration
     private let cache: ResponseCache?
     private let decoder: JSONDecoder
 
-    public init(configuration: APIConfiguration, decoder: JSONDecoder = JSONDecoder()) {
+    public init(configuration: RESTConfiguration, decoder: JSONDecoder = JSONDecoder()) {
         let interceptor = APIInterceptor(configuration: configuration)
         self.session = Session(interceptor: interceptor)
         self.configuration = configuration

@@ -21,6 +21,9 @@ xcuserdata/
 *.xccheckout
 *.xcscmblueprint
 
+# Tuist
+Derived/
+
 # Swift Package Manager
 .build/
 .swiftpm/
