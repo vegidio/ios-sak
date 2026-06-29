@@ -22,9 +22,13 @@ public actor RESTClient {
     private let cache: ResponseCache?
     private let decoder: JSONDecoder
 
-    public init(configuration: RESTConfiguration, decoder: JSONDecoder = JSONDecoder()) {
+    public init(
+        configuration: RESTConfiguration,
+        decoder: JSONDecoder = JSONDecoder(),
+        sessionConfiguration: URLSessionConfiguration = URLSessionConfiguration.af.default
+    ) {
         let interceptor = APIInterceptor(configuration: configuration)
-        self.session = Session(interceptor: interceptor)
+        self.session = Session(configuration: sessionConfiguration, interceptor: interceptor)
         self.configuration = configuration
         self.cache = configuration.cachePolicy != nil ? ResponseCache() : nil
         self.decoder = decoder
@@ -40,6 +44,9 @@ public actor RESTClient {
         _ request: RESTRequest,
         cacheable: Bool = false
     ) async throws -> RESTResponse<T> {
+        var request = request
+        request.url = Self.resolveURL(request.url, baseURL: configuration.baseURL)
+
         let cacheKey = ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters)
 
         // Return cached response if available and not expired
@@ -89,6 +96,21 @@ public actor RESTClient {
     }
 
     // MARK: - Private helpers
+
+    /// Resolves a request URL against a base URL. Absolute URLs (`http`/`https`) are returned
+    /// as-is; relative paths are joined to the base URL, collapsing any duplicated slash at the seam.
+    static func resolveURL(_ url: String, baseURL: String?) -> String {
+        let lowered = url.lowercased()
+        if lowered.hasPrefix("http://") || lowered.hasPrefix("https://") {
+            return url
+        }
+        guard let base = baseURL, !base.isEmpty else {
+            return url
+        }
+        let trimmedBase = base.hasSuffix("/") ? String(base.dropLast()) : base
+        let trimmedPath = url.hasPrefix("/") ? String(url.dropFirst()) : url
+        return "\(trimmedBase)/\(trimmedPath)"
+    }
 
     private func decodeOrThrow<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {

@@ -58,6 +58,53 @@ let response: RESTResponse<User> = try await client.send(
 )
 ```
 
+## Declarative services (`@Service`)
+
+Instead of building each `RESTRequest` by hand, you can describe an API as an annotated protocol and let the `@Service` macro generate a type-safe client — similar to Retrofit on Android. The macro emits a `struct <ProtocolName>Client` that implements the protocol by building requests and forwarding them to a `RESTClient`.
+
+```swift
+struct User: Decodable, Sendable { let id: Int; let name: String }
+struct NewUser: Encodable, Sendable { let name: String }
+
+@Service
+protocol UserService {
+    @Get("users/{id}")
+    func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+
+    @Get("users")
+    func listUsers(page: Query<Int>) async throws -> RESTResponse<[User]>
+
+    @Post("users")
+    func createUser(user: Body<NewUser>) async throws -> RESTResponse<User>
+
+    @Get("public/config")
+    @SkipAuth
+    func config() async throws -> RESTResponse<[String: String]>
+}
+
+// `baseURL` lets the endpoint paths be relative.
+let client = RESTClient(configuration: RESTConfiguration(baseURL: "https://api.example.com"))
+let service = UserServiceClient(client: client)   // generated type
+
+let user = try await service.getUser(id: 1).body
+```
+
+### Annotations
+
+| Annotation | Applies to | Effect |
+|---|---|---|
+| `@Service` | protocol | Generates the `<ProtocolName>Client` implementation |
+| `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` | method | HTTP method + path (relative to `baseURL`) |
+| `@SkipAuth` | method | Sets `skipAuth` — opts the request out of token injection |
+| `Path<T>` | parameter | Substitutes a `{name}` placeholder in the path |
+| `Query<T>` | parameter | Sent as a URL query item |
+| `Body<T>` | parameter | JSON-encoded request body (max one per request) |
+| `Header<T>` | parameter | Sent as a request header |
+
+Every method must be `async throws` and return `RESTResponse<T>`.
+
+> **Note on parameter markers:** Swift does not allow attributes on function parameters, so the parameter tags are *transparent generic type aliases* (`Path<Int>` is literally `Int` at runtime). The **wire key is the parameter name**: a `{id}` placeholder matches the parameter named `id`, and `page: Query<Int>` sends `?page=`. Path/query/header values are interpolated as strings, so use `CustomStringConvertible` types (scalars, `String`).
+
 ## Error handling
 
 All failures are thrown as `RESTError`:
@@ -82,6 +129,17 @@ do {
 ## Configuration
 
 All behaviour is controlled through `RESTConfiguration`, passed once at init time.
+
+### Base URL
+
+Set `baseURL` so request paths can be relative — required for `@Service` endpoints, optional otherwise. Requests whose URL is already absolute (`http`/`https`) are sent unchanged.
+
+```swift
+let client = RESTClient(configuration: RESTConfiguration(baseURL: "https://api.example.com"))
+
+// Relative path is resolved against baseURL → https://api.example.com/users/1
+let response: RESTResponse<User> = try await client.send(RESTRequest(url: "users/1"))
+```
 
 ### Default headers
 
@@ -205,6 +263,7 @@ let client = RESTClient(configuration: RESTConfiguration(
 | Type | Role |
 |---|---|
 | `RESTClient` | Main actor — create once, reuse everywhere |
+| `@Service` + `@Get`/`@Post`/… | Generate a declarative, type-safe client from a protocol |
 | `RESTRequest` | Describes a single HTTP request |
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
 | `RESTConfiguration` | All client behaviour in one place |

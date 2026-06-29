@@ -22,6 +22,10 @@ public struct CachePolicy: Sendable {
 
 /// All configuration for `RESTClient`.
 public struct RESTConfiguration: Sendable {
+    /// Base URL prepended to relative request paths (e.g. those produced by `@Service`).
+    /// Requests whose URL is already absolute (`http`/`https`) are used as-is. `nil` disables it.
+    public var baseURL: String?
+
     /// Headers added to every outgoing request. Per-request headers override these.
     public var defaultHeaders: [String: String]
 
@@ -52,6 +56,7 @@ public struct RESTConfiguration: Sendable {
     public var getToken: (@Sendable () -> String?)?
 
     public init(
+        baseURL: String? = nil,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
         cachePolicy: CachePolicy? = nil,
@@ -62,6 +67,7 @@ public struct RESTConfiguration: Sendable {
         applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
         getToken: (@Sendable () -> String?)? = nil
     ) {
+        self.baseURL = baseURL
         self.defaultHeaders = defaultHeaders
         self.retryPolicy = retryPolicy
         self.cachePolicy = cachePolicy

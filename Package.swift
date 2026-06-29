@@ -1,5 +1,6 @@
 // swift-tools-version: 6.0
 
+import CompilerPluginSupport
 import PackageDescription
 
 let package = Package(
@@ -15,12 +16,35 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.11.1"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0"),
     ],
     targets: [
-        .target(name: "REST", dependencies: ["Alamofire"], path: "Sources/REST"),
+        .macro(
+            name: "RESTMacros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+                .product(name: "SwiftBasicFormat", package: "swift-syntax"),
+            ],
+            path: "Sources/REST/Macros"
+        ),
+        .target(
+            name: "REST",
+            dependencies: ["Alamofire", "RESTMacros"],
+            path: "Sources/REST",
+            exclude: ["Macros", "README.md"]
+        ),
         .target(name: "GraphQL", path: "Sources/GraphQL"),
         .target(name: "Components", path: "Sources/Components"),
         .testTarget(name: "RESTTests", dependencies: ["REST"], path: "Tests/RESTTests"),
+        .testTarget(
+            name: "RESTMacrosTests",
+            dependencies: [
+                "RESTMacros",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+            ],
+            path: "Tests/RESTMacrosTests"
+        ),
         .testTarget(name: "GraphQLTests", dependencies: ["GraphQL"], path: "Tests/GraphQLTests"),
         .testTarget(name: "ComponentsTests", dependencies: ["Components"], path: "Tests/ComponentsTests"),
     ]
