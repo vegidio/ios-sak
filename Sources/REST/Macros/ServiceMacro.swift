@@ -135,14 +135,14 @@ public enum ServiceMacro: PeerMacro {
         // Validate path placeholders against Path params
         let placeholders = self.placeholders(in: path)
         let pathParamNames = Set(params.filter { $0.kind == .path }.map(\.name))
-        for placeholder in placeholders where !pathParamNames.contains(placeholder) {
+        for placeholder in placeholders.subtracting(pathParamNames) {
             context.diagnose(.error(
                 "Path placeholder '{\(placeholder)}' has no matching Path parameter",
                 at: funcDecl
             ))
             return nil
         }
-        for pathParam in pathParamNames where !placeholders.contains(pathParam) {
+        for pathParam in pathParamNames.subtracting(placeholders) {
             context.diagnose(.error(
                 "Path parameter '\(pathParam)' is not used in the path '\(path)'",
                 at: funcDecl
@@ -171,16 +171,14 @@ public enum ServiceMacro: PeerMacro {
 
         let headerParams = params.filter { $0.kind == .header }
         if !headerParams.isEmpty {
-            let entries = headerParams.map { "\"\($0.name)\": \"\\(\($0.name))\"" }.joined(separator: ", ")
-            args.append("headers: [\(entries)]")
+            args.append("headers: [\(dictLiteralEntries(headerParams))]")
         }
         if let bodyParam = bodyParams.first {
             args.append("body: \(bodyParam.name)")
         }
         let queryParams = params.filter { $0.kind == .query }
         if !queryParams.isEmpty {
-            let entries = queryParams.map { "\"\($0.name)\": \"\\(\($0.name))\"" }.joined(separator: ", ")
-            args.append("queryParameters: [\(entries)]")
+            args.append("queryParameters: [\(dictLiteralEntries(queryParams))]")
         }
         if hasSkipAuth(funcDecl) {
             args.append("skipAuth: true")
@@ -194,6 +192,12 @@ public enum ServiceMacro: PeerMacro {
         return try await client.send(request)
         }
         """
+    }
+
+    /// Builds the contents of a `[String: String]` literal that maps each parameter's wire key
+    /// to its string-interpolated value, e.g. `"page": "\(page)"` — shared by header and query args.
+    private static func dictLiteralEntries(_ params: [ParsedParam]) -> String {
+        params.map { "\"\($0.name)\": \"\\(\($0.name))\"" }.joined(separator: ", ")
     }
 
     // MARK: - Parsing helpers

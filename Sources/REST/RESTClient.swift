@@ -59,10 +59,10 @@ public actor RESTClient {
         var request = request
         request.url = Self.resolveURL(request.url, baseURL: configuration.baseURL)
 
-        let cacheKey = ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters)
+        let cacheKey = cacheable ? ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters) : nil
 
         // Return cached response if available and not expired
-        if cacheable, let cache {
+        if cacheable, let cache, let cacheKey {
             if let entry = await cache.retrieve(forKey: cacheKey) {
                 let body = try decodeOrThrow(T.self, from: entry.data)
                 return RESTResponse(body: body, urlResponse: entry.httpResponse)
@@ -100,7 +100,7 @@ public actor RESTClient {
         let body = try decodeOrThrow(T.self, from: data)
 
         // Store successful response in cache
-        if cacheable, let cache, let ttl = configuration.cachePolicy?.ttl {
+        if cacheable, let cache, let cacheKey, let ttl = configuration.cachePolicy?.ttl {
             await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
         }
 
