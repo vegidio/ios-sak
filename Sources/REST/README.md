@@ -1,66 +1,10 @@
 # REST
 
-A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). Handles retry, caching, default headers, and automatic token refresh so you only write request logic.
+A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). You describe an API as an annotated protocol and the `@Service` macro generates a type-safe client that handles retry, default headers, and automatic token refresh for you — similar to Retrofit on Android.
 
 ## Quick start
 
-```swift
-let client = RESTClient(configuration: RESTConfiguration())
-
-struct User: Decodable, Sendable { let id: Int; let name: String }
-
-let response: RESTResponse<User> = try await client.send(
-    RESTRequest(url: "https://api.example.com/users/1")
-)
-print(response.body.name)   // "Alice"
-print(response.statusCode)  // 200
-```
-
-## Sending requests
-
-### GET with query parameters
-
-```swift
-let response: RESTResponse<[User]> = try await client.send(
-    RESTRequest(
-        url: "https://api.example.com/users",
-        queryParameters: ["page": "1", "limit": "20"]
-    )
-)
-```
-
-### POST with auto-encoded body
-
-Pass any `Encodable` value as `body` — it is JSON-encoded automatically and `Content-Type: application/json` is set for you:
-
-```swift
-struct NewUser: Encodable { let name: String }
-
-let response: RESTResponse<User> = try await client.send(
-    try RESTRequest(
-        url: "https://api.example.com/users",
-        method: .post,
-        body: NewUser(name: "Alice")
-    )
-)
-```
-
-### Custom per-request headers
-
-Per-request headers always win over the client's `defaultHeaders`:
-
-```swift
-let response: RESTResponse<User> = try await client.send(
-    RESTRequest(
-        url: "https://api.example.com/users/1",
-        headers: ["X-Request-ID": UUID().uuidString]
-    )
-)
-```
-
-## Declarative services (`@Service`)
-
-Instead of building each `RESTRequest` by hand, you can describe an API as an annotated protocol and let the `@Service` macro generate a type-safe client — similar to Retrofit on Android. The macro emits a `struct <ProtocolName>Client` that implements the protocol by building requests and forwarding them to a `RESTClient`.
+Describe your API as a protocol, annotate it with `@Service`, and construct the generated client directly — only `baseURL` is required:
 
 ```swift
 struct User: Decodable, Sendable { let id: Int; let name: String }
@@ -82,26 +26,40 @@ protocol UserService {
     func config() async throws -> RESTResponse<[String: String]>
 }
 
-// `baseURL` lets the endpoint paths be relative.
-let client = RESTClient(configuration: RESTConfiguration(baseURL: "https://api.example.com"))
-let service = UserServiceClient(client: client)   // generated type
+// `baseURL` lets the endpoint paths be relative. Each service owns its own configuration.
+let service = UserServiceClient(baseURL: "https://api.example.com")
 
-let user = try await service.getUser(id: 1).body
+let user = try await service.getUser(id: 1).body   // "Alice"
+let users = try await service.listUsers(page: 1).body
+let created = try await service.createUser(user: NewUser(name: "Bob")).body
 ```
 
-### Annotations
+The macro emits a `struct UserServiceClient: UserService` that builds each `RESTRequest` and runs it for you. Every method must be `async throws` and return `RESTResponse<T>`, where `T` is the decoded body type.
+
+## Annotations
 
 | Annotation | Applies to | Effect |
 |---|---|---|
 | `@Service` | protocol | Generates the `<ProtocolName>Client` implementation |
 | `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` | method | HTTP method + path (relative to `baseURL`) |
-| `@SkipAuth` | method | Sets `skipAuth` — opts the request out of token injection |
+| `@SkipAuth` | method | Opts the request out of token injection |
 | `Path<T>` | parameter | Substitutes a `{name}` placeholder in the path |
 | `Query<T>` | parameter | Sent as a URL query item |
 | `Body<T>` | parameter | JSON-encoded request body (max one per request) |
 | `Header<T>` | parameter | Sent as a request header |
 
-Every method must be `async throws` and return `RESTResponse<T>`.
+```swift
+@Service
+protocol ArticleService {
+    @Get("articles/{id}")
+    func article(id: Path<Int>, fields: Query<String>) async throws -> RESTResponse<Article>
+
+    @Post("articles")
+    func create(article: Body<NewArticle>, idempotencyKey: Header<String>) async throws -> RESTResponse<Article>
+}
+```
+
+A `Body` value is JSON-encoded automatically and `Content-Type: application/json` is set for you. Per-method `Header` values win over the configuration's `defaultHeaders`.
 
 > **Note on parameter markers:** Swift does not allow attributes on function parameters, so the parameter tags are *transparent generic type aliases* (`Path<Int>` is literally `Int` at runtime). The **wire key is the parameter name**: a `{id}` placeholder matches the parameter named `id`, and `page: Query<Int>` sends `?page=`. Path/query/header values are interpolated as strings, so use `CustomStringConvertible` types (scalars, `String`).
 
@@ -118,7 +76,7 @@ All failures are thrown as `RESTError`:
 
 ```swift
 do {
-    let response: RESTResponse<User> = try await client.send(request)
+    let user = try await service.getUser(id: 1).body
 } catch RESTError.httpError(let code, let data) {
     print("Server error \(code)")
 } catch RESTError.network(let error) {
@@ -128,30 +86,29 @@ do {
 
 ## Configuration
 
-All behaviour is controlled through `RESTConfiguration`, passed once at init time.
+All behaviour is passed as parameters when you create a service client. Only `baseURL` is required; everything else is optional with sensible defaults, and arguments can be supplied in any order.
 
 ### Base URL
 
-Set `baseURL` so request paths can be relative — required for `@Service` endpoints, optional otherwise. Requests whose URL is already absolute (`http`/`https`) are sent unchanged.
+Set `baseURL` so the annotated endpoint paths can be relative. Requests whose URL is already absolute (`http`/`https`) are sent unchanged.
 
 ```swift
-let client = RESTClient(configuration: RESTConfiguration(baseURL: "https://api.example.com"))
-
-// Relative path is resolved against baseURL → https://api.example.com/users/1
-let response: RESTResponse<User> = try await client.send(RESTRequest(url: "users/1"))
+let service = UserServiceClient(baseURL: "https://api.example.com")
+// @Get("users/1") → https://api.example.com/users/1
 ```
 
 ### Default headers
 
-Headers added to every request. A header already present on an individual request takes priority.
+Headers added to every request. A per-method `Header<T>` with the same name takes priority.
 
 ```swift
-let client = RESTClient(configuration: RESTConfiguration(
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
     defaultHeaders: [
         "Accept": "application/json",
         "X-API-Version": "2"
     ]
-))
+)
 ```
 
 ### Retry
@@ -159,25 +116,9 @@ let client = RESTClient(configuration: RESTConfiguration(
 Failed requests are retried automatically. The default policy retries up to 3 times with a 1-second delay. Set `retryPolicy: nil` to disable.
 
 ```swift
-let client = RESTClient(configuration: RESTConfiguration(
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
     retryPolicy: RetryPolicy(maxAttempts: 5, delay: 2.0)
-))
-```
-
-### Caching
-
-Responses can be cached in memory with a TTL. Pass `cacheable: true` when sending — the second call returns the cached data without hitting the network.
-
-```swift
-let client = RESTClient(configuration: RESTConfiguration(
-    cachePolicy: CachePolicy(ttl: 3600)  // cache for 1 hour
-))
-
-// First call hits the network and stores the response.
-// Subsequent calls within the TTL return the cached response.
-let response: RESTResponse<[User]> = try await client.send(
-    RESTRequest(url: "https://api.example.com/users"),
-    cacheable: true
 )
 ```
 
@@ -185,58 +126,50 @@ let response: RESTResponse<[User]> = try await client.send(
 
 ### Attaching a token to every request
 
-Use `applyToken` to inject the token however your API expects it (Bearer header, query parameter, etc.):
+Use `applyToken` to inject the token however your API expects it (Bearer header, query parameter, etc.). Once configured, every request automatically receives the current token:
 
 ```swift
-let client = RESTClient(configuration: RESTConfiguration(
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
     applyToken: { token, request in
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
-))
+)
 ```
-
-Once configured, every request automatically receives the current token.
 
 ### Skipping auth on specific requests
 
-Pass `skipAuth: true` to opt out of token injection for a single request — useful for login or public endpoints:
+Annotate a method with `@SkipAuth` to opt it out of token injection — useful for login or public endpoints:
 
 ```swift
-let response: RESTResponse<LoginResponse> = try await client.send(
-    try RESTRequest(
-        url: "https://api.example.com/auth/login",
-        method: .post,
-        body: credentials,
-        skipAuth: true      // no token attached
-    )
-)
+@Service
+protocol AuthService {
+    @Post("auth/login")
+    @SkipAuth
+    func login(credentials: Body<Credentials>) async throws -> RESTResponse<LoginResponse>
+}
 ```
 
 ### Automatic token refresh on 401
 
-Provide `isUnauthorized` to detect auth failures and `refreshToken` to fetch a new token. When a request returns 401, the client refreshes the token once and retries the original request automatically. Concurrent requests that all hit 401 share a single refresh call.
+Provide `isUnauthorized` to detect auth failures and `refreshToken` to fetch a new token. When a request returns 401, the token is refreshed once and the original request is retried automatically. Concurrent requests that all hit 401 share a single refresh call.
 
 ```swift
-let client = RESTClient(configuration: RESTConfiguration(
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
     isUnauthorized: { $0.statusCode == 401 },
     refreshToken: {
-        // Use a separate client (no auth) just for the refresh call
-        struct RefreshResponse: Decodable, Sendable { let accessToken: String }
-        let r: RESTResponse<RefreshResponse> = try await bareClient.send(
-            try RESTRequest(
-                url: "https://api.example.com/auth/refresh",
-                method: .post,
-                body: ["refreshToken": authStore.refreshToken],
-                skipAuth: true
-            )
+        // Refresh through a dedicated, auth-free service.
+        let response = try await authService.refresh(
+            token: RefreshToken(value: authStore.refreshToken)
         )
-        authStore.accessToken = r.body.accessToken
-        return r.body.accessToken
+        authStore.accessToken = response.body.accessToken
+        return response.body.accessToken
     },
     applyToken: { token, request in
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
-))
+)
 ```
 
 ### Preemptive JWT refresh
@@ -248,26 +181,23 @@ Avoid 401 errors entirely by refreshing the token before it expires. Use `jwtExp
 authStore.accessToken = loginResponse.body.accessToken
 authStore.expiry = jwtExpiryDate(from: loginResponse.body.accessToken)
 
-let client = RESTClient(configuration: RESTConfiguration(
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
     tokenExpiryDate: { authStore.expiry },
     preemptiveRefreshLeadTime: 60,   // refresh 60 s before expiry
     refreshToken: { /* same as above */ },
     applyToken: { token, request in
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
-))
+)
 ```
 
 ## Key types
 
 | Type | Role |
 |---|---|
-| `RESTClient` | Main actor — create once, reuse everywhere |
 | `@Service` + `@Get`/`@Post`/… | Generate a declarative, type-safe client from a protocol |
-| `RESTRequest` | Describes a single HTTP request |
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
-| `RESTConfiguration` | All client behaviour in one place |
 | `RetryPolicy` | `maxAttempts` + `delay` |
-| `CachePolicy` | `ttl` (seconds) |
-| `RESTError` | Typed error thrown by `send` |
+| `RESTError` | Typed error thrown on failure |
 | `jwtExpiryDate(from:)` | Extracts `exp` claim from a JWT as a `Date` |

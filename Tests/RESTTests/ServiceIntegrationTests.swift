@@ -34,7 +34,7 @@ private protocol UserService {
 @Suite("@Service generated client", .serialized)
 struct ServiceIntegrationTests {
 
-    private func makeClient(baseURL: String, withAuth: Bool = false) -> RESTClient {
+    private func makeService(baseURL: String, withAuth: Bool = false) -> UserServiceClient {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [StubURLProtocol.self]
 
@@ -45,12 +45,12 @@ struct ServiceIntegrationTests {
             getToken = { "tok123" }
         }
 
-        let config = RESTConfiguration(
+        return UserServiceClient(
             baseURL: baseURL,
             applyToken: applyToken,
-            getToken: getToken
+            getToken: getToken,
+            sessionConfiguration: sessionConfig
         )
-        return RESTClient(configuration: config, sessionConfiguration: sessionConfig)
     }
 
     @Test("GET with a Path parameter hits the substituted URL")
@@ -58,7 +58,7 @@ struct ServiceIntegrationTests {
         StubURLProtocol.reset()
         StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 7, name: "Alice"))) }
 
-        let service = UserServiceClient(client: makeClient(baseURL: "https://api.example.com"))
+        let service = makeService(baseURL: "https://api.example.com")
         let response = try await service.getUser(id: 7)
 
         #expect(StubURLProtocol.captured?.url == "https://api.example.com/users/7")
@@ -72,7 +72,7 @@ struct ServiceIntegrationTests {
         StubURLProtocol.reset()
         StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode([User(id: 1, name: "Bob")])) }
 
-        let service = UserServiceClient(client: makeClient(baseURL: "https://api.example.com/"))
+        let service = makeService(baseURL: "https://api.example.com/")
         let response = try await service.listUsers(page: 2)
 
         #expect(StubURLProtocol.captured?.url == "https://api.example.com/users?page=2")
@@ -84,7 +84,7 @@ struct ServiceIntegrationTests {
         StubURLProtocol.reset()
         StubURLProtocol.respond { _ in (201, try! JSONEncoder().encode(User(id: 9, name: "Carol"))) }
 
-        let service = UserServiceClient(client: makeClient(baseURL: "https://api.example.com"))
+        let service = makeService(baseURL: "https://api.example.com")
         let response = try await service.createUser(user: NewUser(name: "Carol"))
 
         #expect(StubURLProtocol.captured?.method == "POST")
@@ -100,7 +100,7 @@ struct ServiceIntegrationTests {
         StubURLProtocol.reset()
         StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 1, name: "Dao"))) }
 
-        let service = UserServiceClient(client: makeClient(baseURL: "https://api.example.com", withAuth: true))
+        let service = makeService(baseURL: "https://api.example.com", withAuth: true)
         _ = try await service.getUser(id: 1)
 
         #expect(StubURLProtocol.captured?.headers["Authorization"] == "Bearer tok123")
@@ -111,7 +111,7 @@ struct ServiceIntegrationTests {
         StubURLProtocol.reset()
         StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(["env": "prod"])) }
 
-        let service = UserServiceClient(client: makeClient(baseURL: "https://api.example.com", withAuth: true))
+        let service = makeService(baseURL: "https://api.example.com", withAuth: true)
         let response = try await service.config()
 
         #expect(StubURLProtocol.captured?.url == "https://api.example.com/public/config")

@@ -1,21 +1,11 @@
 import Foundation
 import Alamofire
 
-/// A high-level HTTP client built on Alamofire that provides automatic retry,
-/// TTL-based response caching, default headers, and token refresh workflows.
+/// The HTTP engine built on Alamofire that powers `@Service` clients, providing automatic
+/// retry, TTL-based response caching, default headers, and token refresh workflows.
 ///
-/// Create one `RESTClient` per API domain (typically at app startup) and reuse it:
-/// ```swift
-/// let client = RESTClient(configuration: RESTConfiguration(
-///     defaultHeaders: ["X-API-Version": "2"],
-///     retryPolicy: RetryPolicy(maxAttempts: 3),
-///     cachePolicy: CachePolicy(ttl: 300),
-///     isUnauthorized: { $0.statusCode == 401 },
-///     refreshToken: { try await authStore.refresh() },
-///     applyToken: { token, req in req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") },
-///     tokenExpiryDate: { authStore.expiry }
-/// ))
-/// ```
+/// You normally do not construct this type directly: declare an API with `@Service` and create
+/// the generated `<Name>Client`, which owns its own `RESTClient` internally.
 public actor RESTClient {
     private let session: Session
     private let configuration: RESTConfiguration
@@ -23,12 +13,34 @@ public actor RESTClient {
     private let decoder: JSONDecoder
 
     public init(
-        configuration: RESTConfiguration,
+        baseURL: String,
+        defaultHeaders: [String: String] = [:],
+        retryPolicy: RetryPolicy? = RetryPolicy(),
+        cachePolicy: CachePolicy? = nil,
+        tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+        preemptiveRefreshLeadTime: TimeInterval = 60,
+        isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+        refreshToken: (@Sendable () async throws -> String)? = nil,
+        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+        getToken: (@Sendable () -> String?)? = nil,
         decoder: JSONDecoder = JSONDecoder(),
-        sessionConfiguration: URLSessionConfiguration = URLSessionConfiguration.af.default
+        sessionConfiguration: URLSessionConfiguration? = nil
     ) {
+        let configuration = RESTConfiguration(
+            baseURL: baseURL,
+            defaultHeaders: defaultHeaders,
+            retryPolicy: retryPolicy,
+            cachePolicy: cachePolicy,
+            tokenExpiryDate: tokenExpiryDate,
+            preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+            isUnauthorized: isUnauthorized,
+            refreshToken: refreshToken,
+            applyToken: applyToken,
+            getToken: getToken
+        )
+        let sessionConfig = sessionConfiguration ?? URLSessionConfiguration.af.default
         let interceptor = APIInterceptor(configuration: configuration)
-        self.session = Session(configuration: sessionConfiguration, interceptor: interceptor)
+        self.session = Session(configuration: sessionConfig, interceptor: interceptor)
         self.configuration = configuration
         self.cache = configuration.cachePolicy != nil ? ResponseCache() : nil
         self.decoder = decoder

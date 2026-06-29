@@ -35,8 +35,34 @@ public enum ServiceMacro: PeerMacro {
         let source = """
         \(access)struct \(protocolName)Client: \(protocolName) {
         private let client: RESTClient
-        \(access)init(client: RESTClient) {
-        self.client = client
+        \(access)init(
+        baseURL: String,
+        defaultHeaders: [String: String] = [:],
+        retryPolicy: RetryPolicy? = RetryPolicy(),
+        cachePolicy: CachePolicy? = nil,
+        tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+        preemptiveRefreshLeadTime: TimeInterval = 60,
+        isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+        refreshToken: (@Sendable () async throws -> String)? = nil,
+        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+        getToken: (@Sendable () -> String?)? = nil,
+        decoder: JSONDecoder = JSONDecoder(),
+        sessionConfiguration: URLSessionConfiguration? = nil
+        ) {
+        self.client = RESTClient(
+        baseURL: baseURL,
+        defaultHeaders: defaultHeaders,
+        retryPolicy: retryPolicy,
+        cachePolicy: cachePolicy,
+        tokenExpiryDate: tokenExpiryDate,
+        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+        isUnauthorized: isUnauthorized,
+        refreshToken: refreshToken,
+        applyToken: applyToken,
+        getToken: getToken,
+        decoder: decoder,
+        sessionConfiguration: sessionConfiguration
+        )
         }
         \(methods.joined(separator: "\n"))
         }
