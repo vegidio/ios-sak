@@ -9,14 +9,14 @@ import Alamofire
 public actor RESTClient {
     private let session: Session
     private let configuration: RESTConfiguration
-    private let cache: ResponseCache?
+    private let cache: ResponseCache
     private let decoder: JSONDecoder
 
     public init(
         baseURL: String,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
-        cachePolicy: CachePolicy? = nil,
+        maxEntries: Int? = nil,
         tokenExpiryDate: (@Sendable () -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -30,7 +30,6 @@ public actor RESTClient {
             baseURL: baseURL,
             defaultHeaders: defaultHeaders,
             retryPolicy: retryPolicy,
-            cachePolicy: cachePolicy,
             tokenExpiryDate: tokenExpiryDate,
             preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
             isUnauthorized: isUnauthorized,
@@ -42,7 +41,7 @@ public actor RESTClient {
         let interceptor = APIInterceptor(configuration: configuration)
         self.session = Session(configuration: sessionConfig, interceptor: interceptor)
         self.configuration = configuration
-        self.cache = configuration.cachePolicy != nil ? ResponseCache() : nil
+        self.cache = ResponseCache(maxEntries: maxEntries)
         self.decoder = decoder
     }
 
@@ -50,11 +49,15 @@ public actor RESTClient {
     ///
     /// - Parameters:
     ///   - request: The REST request descriptor.
-    ///   - cacheable: When `true` and a `CachePolicy` is configured, the response is read from
-    ///     and written to the in-memory cache. Defaults to `false`.
+    ///   - cacheable: When `true`, the response is read from and written to the in-memory cache.
+    ///     Defaults to `false`.
+    ///   - ttl: How long a cached response stays valid, in seconds. `nil` means the entry never
+    ///     expires (it is kept until evicted by the cache's `maxEntries` limit). Ignored when
+    ///     `cacheable` is `false`.
     public func send<T: Decodable & Sendable>(
         _ request: RESTRequest,
-        cacheable: Bool = false
+        cacheable: Bool = false,
+        ttl: TimeInterval? = nil
     ) async throws -> RESTResponse<T> {
         var request = request
         request.url = Self.resolveURL(request.url, baseURL: configuration.baseURL)
@@ -62,7 +65,7 @@ public actor RESTClient {
         let cacheKey = cacheable ? ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters) : nil
 
         // Return cached response if available and not expired
-        if cacheable, let cache, let cacheKey {
+        if cacheable, let cacheKey {
             if let entry = await cache.retrieve(forKey: cacheKey) {
                 let body = try decodeOrThrow(T.self, from: entry.data)
                 return RESTResponse(body: body, urlResponse: entry.httpResponse)
@@ -100,7 +103,7 @@ public actor RESTClient {
         let body = try decodeOrThrow(T.self, from: data)
 
         // Store successful response in cache
-        if cacheable, let cache, let cacheKey, let ttl = configuration.cachePolicy?.ttl {
+        if cacheable, let cacheKey {
             await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
         }
 

@@ -31,6 +31,18 @@ private protocol UserService {
     func config() async throws -> RESTResponse<[String: String]>
 }
 
+// Service-wide caching, with one method opting out via @NoCache.
+@Service
+@Cacheable(ttl: 300)
+private protocol CachedService {
+    @Get("users/{id}")
+    func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+
+    @Get("health")
+    @NoCache
+    func health() async throws -> RESTResponse<[String: String]>
+}
+
 @Suite("@Service generated client", .serialized)
 struct ServiceIntegrationTests {
 
@@ -51,6 +63,12 @@ struct ServiceIntegrationTests {
             getToken: getToken,
             sessionConfiguration: sessionConfig
         )
+    }
+
+    private func makeCachedService(baseURL: String) -> CachedServiceClient {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubURLProtocol.self]
+        return CachedServiceClient(baseURL: baseURL, sessionConfiguration: sessionConfig)
     }
 
     @Test("GET with a Path parameter hits the substituted URL")
@@ -118,6 +136,32 @@ struct ServiceIntegrationTests {
         #expect(StubURLProtocol.captured?.headers["Authorization"] == nil)
         #expect(response.body["env"] == "prod")
     }
+
+    @Test("a @Cacheable request serves the second call from cache")
+    func cacheableServesSecondCallFromCache() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 7, name: "Alice"))) }
+
+        let service = makeCachedService(baseURL: "https://api.example.com")
+        let first = try await service.getUser(id: 7)
+        let second = try await service.getUser(id: 7)
+
+        #expect(StubURLProtocol.requestCount == 1)
+        #expect(first.body == User(id: 7, name: "Alice"))
+        #expect(second.body == first.body)
+    }
+
+    @Test("a @NoCache request always hits the network")
+    func noCacheAlwaysHitsNetwork() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(["status": "ok"])) }
+
+        let service = makeCachedService(baseURL: "https://api.example.com")
+        _ = try await service.health()
+        _ = try await service.health()
+
+        #expect(StubURLProtocol.requestCount == 2)
+    }
 }
 
 // MARK: - URLProtocol stub
@@ -136,12 +180,19 @@ private final class StubURLProtocol: URLProtocol {
 
     nonisolated(unsafe) private static var responder: Responder?
     nonisolated(unsafe) private static var capturedBox: Captured?
+    nonisolated(unsafe) private static var requestCountBox = 0
     private static let lock = NSLock()
 
     static func reset() {
         lock.lock(); defer { lock.unlock() }
         responder = nil
         capturedBox = nil
+        requestCountBox = 0
+    }
+
+    static var requestCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return requestCountBox
     }
 
     static func respond(_ responder: @escaping Responder) {
@@ -168,6 +219,7 @@ private final class StubURLProtocol: URLProtocol {
         let responder: Responder?
         StubURLProtocol.lock.lock()
         StubURLProtocol.capturedBox = captured
+        StubURLProtocol.requestCountBox += 1
         responder = StubURLProtocol.responder
         StubURLProtocol.lock.unlock()
 

@@ -11,15 +11,6 @@ public struct RetryPolicy: Sendable {
     }
 }
 
-/// Policy for TTL-based in-memory response caching.
-public struct CachePolicy: Sendable {
-    public var ttl: TimeInterval
-
-    public init(ttl: TimeInterval = 300) {
-        self.ttl = ttl
-    }
-}
-
 /// Internal bundle of settings for `RESTClient`. Not part of the public API — consumers pass
 /// these settings directly to a `@Service` client's (or `RESTClient`'s) init.
 struct RESTConfiguration: Sendable {
@@ -32,9 +23,6 @@ struct RESTConfiguration: Sendable {
 
     /// Retry policy applied to all failed requests. Set to `nil` to disable retry.
     public var retryPolicy: RetryPolicy?
-
-    /// Cache policy for responses marked `cacheable`. Set to `nil` to disable caching.
-    public var cachePolicy: CachePolicy?
 
     /// Returns the current access token expiry date, or `nil` if not applicable.
     public var tokenExpiryDate: (@Sendable () -> Date?)?
@@ -60,7 +48,6 @@ struct RESTConfiguration: Sendable {
         baseURL: String? = nil,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
-        cachePolicy: CachePolicy? = nil,
         tokenExpiryDate: (@Sendable () -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -71,7 +58,6 @@ struct RESTConfiguration: Sendable {
         self.baseURL = baseURL
         self.defaultHeaders = defaultHeaders
         self.retryPolicy = retryPolicy
-        self.cachePolicy = cachePolicy
         self.tokenExpiryDate = tokenExpiryDate
         self.preemptiveRefreshLeadTime = preemptiveRefreshLeadTime
         self.isUnauthorized = isUnauthorized

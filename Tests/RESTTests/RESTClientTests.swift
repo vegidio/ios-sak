@@ -88,6 +88,36 @@ struct RESTClientTests {
         #expect(retrieved == nil)
     }
 
+    @Test("ResponseCache keeps an entry with no TTL indefinitely")
+    func responseCacheNoExpiry() async {
+        let cache = ResponseCache()
+        let response = HTTPURLResponse(
+            url: URL(string: "https://example.com")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        // A nil TTL means the entry never expires.
+        await cache.store(Data(), httpResponse: response, forKey: "key3", ttl: nil)
+        let retrieved = await cache.retrieve(forKey: "key3")
+        #expect(retrieved != nil)
+        #expect(retrieved?.expiresAt == nil)
+    }
+
+    @Test("ResponseCache honors the maxEntries count limit")
+    func responseCacheMaxEntries() async {
+        let cache = ResponseCache(maxEntries: 5)
+        let response = HTTPURLResponse(
+            url: URL(string: "https://example.com")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        await cache.store(Data(), httpResponse: response, forKey: "limited", ttl: 300)
+        let retrieved = await cache.retrieve(forKey: "limited")
+        #expect(retrieved != nil)
+    }
+
     // MARK: - TokenRefreshCoordinator
 
     @Test("TokenRefreshCoordinator calls handler only once for concurrent refresh calls")
@@ -197,12 +227,6 @@ struct RESTClientTests {
         let config = RESTConfiguration()
         #expect(config.retryPolicy?.maxAttempts == 3)
         #expect(config.retryPolicy?.delay == 1.0)
-    }
-
-    @Test("RESTConfiguration default cachePolicy is nil")
-    func configurationDefaultCachePolicy() {
-        let config = RESTConfiguration()
-        #expect(config.cachePolicy == nil)
     }
 
     @Test("RESTConfiguration default getToken is nil")

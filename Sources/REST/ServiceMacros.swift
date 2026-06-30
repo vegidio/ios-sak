@@ -49,3 +49,21 @@ public macro Delete(_ path: String) = #externalMacro(module: "RESTMacros", type:
 /// Opts the request out of automatic token injection (sets `RESTRequest.skipAuth`).
 @attached(peer)
 public macro SkipAuth() = #externalMacro(module: "RESTMacros", type: "SkipAuthMacro")
+
+/// Enables in-memory response caching.
+///
+/// Apply it to the `@Service` protocol to cache every request by default, and/or to individual
+/// methods to enable or override caching for that request.
+///
+/// - Parameters:
+///   - ttl: How long a cached response stays valid, in seconds. When the argument is omitted the
+///     entry never expires (it is kept until evicted by `maxEntries`). A method-level `@Cacheable`
+///     with no `ttl` removes the TTL inherited from the service level while keeping caching on.
+///   - maxEntries: Maximum number of responses kept in the shared in-memory store. Only honored on
+///     the `@Service` protocol; specifying it on a method is an error.
+@attached(peer)
+public macro Cacheable(ttl: TimeInterval? = nil, maxEntries: Int? = nil) = #externalMacro(module: "RESTMacros", type: "CacheableMacro")
+
+/// Opts a method out of caching when the `@Service` protocol enables it with `@Cacheable`.
+@attached(peer)
+public macro NoCache() = #externalMacro(module: "RESTMacros", type: "NoCacheMacro")

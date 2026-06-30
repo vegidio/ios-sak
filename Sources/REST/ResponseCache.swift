@@ -3,9 +3,10 @@ import Foundation
 struct CacheEntry: Sendable {
     let data: Data
     let httpResponse: HTTPURLResponse
-    let expiresAt: Date
+    // `nil` means the entry never expires (cache kept until evicted by `maxEntries`).
+    let expiresAt: Date?
 
-    var isExpired: Bool { Date() >= expiresAt }
+    var isExpired: Bool { expiresAt.map { Date() >= $0 } ?? false }
 }
 
 // NSCache requires AnyObject values; this box wraps the Sendable CacheEntry.
@@ -17,8 +18,15 @@ private final class CacheEntryBox: @unchecked Sendable {
 actor ResponseCache {
     private let storage = NSCache<NSString, CacheEntryBox>()
 
-    func store(_ data: Data, httpResponse: HTTPURLResponse, forKey key: String, ttl: TimeInterval) {
-        let entry = CacheEntry(data: data, httpResponse: httpResponse, expiresAt: Date().addingTimeInterval(ttl))
+    /// - Parameter maxEntries: Upper bound on the number of cached responses. `nil` means no
+    ///   limit (NSCache `countLimit` of 0).
+    init(maxEntries: Int? = nil) {
+        storage.countLimit = maxEntries ?? 0
+    }
+
+    func store(_ data: Data, httpResponse: HTTPURLResponse, forKey key: String, ttl: TimeInterval?) {
+        let expiresAt = ttl.map { Date().addingTimeInterval($0) }
+        let entry = CacheEntry(data: data, httpResponse: httpResponse, expiresAt: expiresAt)
         storage.setObject(CacheEntryBox(entry), forKey: key as NSString)
     }
 

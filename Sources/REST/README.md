@@ -1,6 +1,6 @@
 # REST
 
-A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). You describe an API as an annotated protocol and the `@Service` macro generates a type-safe client that handles retry, default headers, and automatic token refresh for you — similar to Retrofit on Android.
+A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). You describe an API as an annotated protocol and the `@Service` macro generates a type-safe client that handles retry, default headers, response caching, and automatic token refresh for you — similar to Retrofit on Android.
 
 ## Quick start
 
@@ -43,6 +43,8 @@ The macro emits a `struct UserServiceClient: UserService` that builds each `REST
 | `@Service` | protocol | Generates the `<ProtocolName>Client` implementation |
 | `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` | method | HTTP method + path (relative to `baseURL`) |
 | `@SkipAuth` | method | Opts the request out of token injection |
+| `@Cacheable(ttl:maxEntries:)` | protocol / method | Caches responses in memory (see [Caching](#caching)) |
+| `@NoCache` | method | Opts a method out when the service caches by default |
 | `Path<T>` | parameter | Substitutes a `{name}` placeholder in the path |
 | `Query<T>` | parameter | Sent as a URL query item |
 | `Body<T>` | parameter | JSON-encoded request body (max one per request) |
@@ -122,6 +124,45 @@ let service = UserServiceClient(
 )
 ```
 
+## Caching
+
+Responses are cached in memory with `@Cacheable`. It can sit on the `@Service` protocol to cache every request by default, and/or on individual methods to enable or override caching for that request. `@NoCache` opts a method out. All caching is configured by annotation — there is nothing to pass at the call site.
+
+```swift
+@Service
+@Cacheable(ttl: 300, maxEntries: 100)   // default: cache every request for 5 minutes
+protocol CatalogService {
+    @Get("products")
+    func products() async throws -> RESTResponse<[Product]>          // inherits → 300 s
+
+    @Get("products/{id}")
+    @Cacheable(ttl: 60)
+    func product(id: Path<Int>) async throws -> RESTResponse<Product> // override → 60 s
+
+    @Get("categories")
+    @Cacheable
+    func categories() async throws -> RESTResponse<[Category]>        // cached, never expires
+
+    @Get("inventory")
+    @NoCache
+    func inventory() async throws -> RESTResponse<Inventory>          // not cached
+}
+```
+
+The model is **presence-based** — the macro reads what you wrote, not a default value:
+
+| On a method | Effect when the service has `@Cacheable(ttl: 300)` |
+|---|---|
+| *(nothing)* | inherits → cached for 300 s |
+| `@Cacheable` | cached with **no expiry** (removes the inherited TTL) |
+| `@Cacheable(ttl: 60)` | cached for **60 s** (overrides) |
+| `@NoCache` | **not cached** |
+
+- **`ttl`** — seconds a cached response stays valid. Omit it to cache with no expiry (kept until evicted by `maxEntries`).
+- **`maxEntries`** — caps the size of the single shared in-memory store. It is **service-level only**; using it on a method is a compile error.
+
+Cache entries are keyed by the resolved URL plus its query parameters, so the same call with different query values is cached separately.
+
 ## Authentication
 
 ### Attaching a token to every request
@@ -197,6 +238,7 @@ let service = UserServiceClient(
 | Type | Role |
 |---|---|
 | `@Service` + `@Get`/`@Post`/… | Generate a declarative, type-safe client from a protocol |
+| `@Cacheable` / `@NoCache` | Opt requests into / out of in-memory response caching |
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
 | `RetryPolicy` | `maxAttempts` + `delay` |
 | `RESTError` | Typed error thrown on failure |

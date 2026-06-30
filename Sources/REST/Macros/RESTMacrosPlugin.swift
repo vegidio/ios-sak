@@ -11,5 +11,7 @@ struct RESTMacrosPlugin: CompilerPlugin {
         PatchMacro.self,
         DeleteMacro.self,
         SkipAuthMacro.self,
+        CacheableMacro.self,
+        NoCacheMacro.self,
     ]
 }

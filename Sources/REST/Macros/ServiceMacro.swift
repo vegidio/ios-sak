@@ -23,13 +23,20 @@ public enum ServiceMacro: PeerMacro {
         let access = accessModifier(of: protocolDecl)
         let protocolName = protocolDecl.name.text
 
+        // Service-wide caching default read from a `@Cacheable` on the protocol itself.
+        let serviceCache = cacheable(in: protocolDecl.attributes)
+
         var methods: [String] = []
         for member in protocolDecl.memberBlock.members {
             guard let funcDecl = member.decl.as(FunctionDeclSyntax.self) else { continue }
-            if let method = makeMethod(funcDecl, access: access, context: context) {
+            if let method = makeMethod(funcDecl, access: access, serviceCache: serviceCache, context: context) {
                 methods.append(method)
             }
         }
+
+        // `maxEntries` sizes the single shared cache store; it is annotation-driven (baked into
+        // the generated `RESTClient(...)` call) rather than surfaced on the client's init.
+        let maxEntriesArg = serviceCache?.maxEntries.map { "maxEntries: \($0),\n" } ?? ""
 
         // Built left-aligned; SwiftBasicFormat re-indents the whole declaration deterministically.
         let source = """
@@ -39,7 +46,6 @@ public enum ServiceMacro: PeerMacro {
         baseURL: String,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
-        cachePolicy: CachePolicy? = nil,
         tokenExpiryDate: (@Sendable () -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -53,8 +59,7 @@ public enum ServiceMacro: PeerMacro {
         baseURL: baseURL,
         defaultHeaders: defaultHeaders,
         retryPolicy: retryPolicy,
-        cachePolicy: cachePolicy,
-        tokenExpiryDate: tokenExpiryDate,
+        \(maxEntriesArg)tokenExpiryDate: tokenExpiryDate,
         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
         isUnauthorized: isUnauthorized,
         refreshToken: refreshToken,
@@ -87,6 +92,7 @@ public enum ServiceMacro: PeerMacro {
     private static func makeMethod(
         _ funcDecl: FunctionDeclSyntax,
         access: String,
+        serviceCache: CacheableArgs?,
         context: some MacroExpansionContext
     ) -> String? {
         let funcName = funcDecl.name.text
@@ -186,10 +192,32 @@ public enum ServiceMacro: PeerMacro {
 
         let requestExpr = "\(hasBody ? "try " : "")RESTRequest(\n\(args.joined(separator: ",\n"))\n)"
 
+        // Resolve effective caching for this method: an explicit @NoCache opts out, an explicit
+        // method @Cacheable enables/overrides (presence-based TTL), otherwise inherit the service
+        // default. `maxEntries` is service-level only.
+        let methodCache = cacheable(in: funcDecl.attributes)
+        if let methodCache, methodCache.maxEntries != nil {
+            context.diagnose(.error(
+                "maxEntries is only valid on the @Service protocol, not on a method",
+                at: funcDecl
+            ))
+            return nil
+        }
+        let sendCall: String
+        if hasNoCache(funcDecl) {
+            sendCall = "client.send(request)"
+        } else if let methodCache {
+            sendCall = "client.send(request, cacheable: true, ttl: \(methodCache.ttl ?? "nil"))"
+        } else if let serviceCache {
+            sendCall = "client.send(request, cacheable: true, ttl: \(serviceCache.ttl ?? "nil"))"
+        } else {
+            sendCall = "client.send(request)"
+        }
+
         return """
         \(access)func \(funcName)(\(signatureParams)) async throws -> \(returnType) {
         let request = \(requestExpr)
-        return try await client.send(request)
+        return try await \(sendCall)
         }
         """
     }
@@ -238,6 +266,42 @@ public enum ServiceMacro: PeerMacro {
         funcDecl.attributes.contains { attribute in
             attribute.as(AttributeSyntax.self)?
                 .attributeName.as(IdentifierTypeSyntax.self)?.name.text == "SkipAuth"
+        }
+    }
+
+    /// The arguments written on a `@Cacheable` attribute. Each field is the literal expression text
+    /// as written (e.g. `"60"`, `"nil"`) or `nil` when that argument was omitted — the latter is
+    /// what drives presence-based TTL (a bare `@Cacheable` removes any inherited TTL).
+    struct CacheableArgs {
+        let ttl: String?
+        let maxEntries: String?
+    }
+
+    /// Returns the `@Cacheable` arguments if the attribute is present in `attributes`, else `nil`.
+    private static func cacheable(in attributes: AttributeListSyntax) -> CacheableArgs? {
+        for attribute in attributes {
+            guard let attr = attribute.as(AttributeSyntax.self),
+                  attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Cacheable" else { continue }
+            var ttl: String?
+            var maxEntries: String?
+            if let list = attr.arguments?.as(LabeledExprListSyntax.self) {
+                for arg in list {
+                    switch arg.label?.text {
+                    case "ttl": ttl = arg.expression.trimmedDescription
+                    case "maxEntries": maxEntries = arg.expression.trimmedDescription
+                    default: break
+                    }
+                }
+            }
+            return CacheableArgs(ttl: ttl, maxEntries: maxEntries)
+        }
+        return nil
+    }
+
+    private static func hasNoCache(_ funcDecl: FunctionDeclSyntax) -> Bool {
+        funcDecl.attributes.contains { attribute in
+            attribute.as(AttributeSyntax.self)?
+                .attributeName.as(IdentifierTypeSyntax.self)?.name.text == "NoCache"
         }
     }
 

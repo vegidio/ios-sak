@@ -12,6 +12,8 @@ final class ServiceMacroTests: XCTestCase {
         "Patch": PatchMacro.self,
         "Delete": DeleteMacro.self,
         "SkipAuth": SkipAuthMacro.self,
+        "Cacheable": CacheableMacro.self,
+        "NoCache": NoCacheMacro.self,
     ]
 
     func testGetWithPath() {
@@ -34,7 +36,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -48,7 +49,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -92,7 +92,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -106,7 +105,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -151,7 +149,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -165,7 +162,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -211,7 +207,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -225,7 +220,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -269,7 +263,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -283,7 +276,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -328,7 +320,6 @@ final class ServiceMacroTests: XCTestCase {
                     baseURL: String,
                     defaultHeaders: [String: String] = [:],
                     retryPolicy: RetryPolicy? = RetryPolicy(),
-                    cachePolicy: CachePolicy? = nil,
                     tokenExpiryDate: (@Sendable () -> Date?)? = nil,
                     preemptiveRefreshLeadTime: TimeInterval = 60,
                     isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -342,7 +333,6 @@ final class ServiceMacroTests: XCTestCase {
                         baseURL: baseURL,
                         defaultHeaders: defaultHeaders,
                         retryPolicy: retryPolicy,
-                        cachePolicy: cachePolicy,
                         tokenExpiryDate: tokenExpiryDate,
                         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
                         isUnauthorized: isUnauthorized,
@@ -359,6 +349,305 @@ final class ServiceMacroTests: XCTestCase {
             diagnostics: [
                 DiagnosticSpec(
                     message: "'createUser' has more than one Body parameter",
+                    line: 3,
+                    column: 5
+                )
+            ],
+            macros: macros
+        )
+    }
+
+    func testServiceLevelCacheable() {
+        assertMacroExpansion(
+            """
+            @Service
+            @Cacheable(ttl: 300, maxEntries: 100)
+            protocol UserService {
+                @Get("users/{id}")
+                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+            }
+
+            struct UserServiceClient: UserService {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        maxEntries: 100,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+                func getUser(id: Int) async throws -> RESTResponse<User> {
+                    let request = RESTRequest(
+                        url: "users/\\(id)",
+                        method: .get
+                    )
+                    return try await client.send(request, cacheable: true, ttl: 300)
+                }
+            }
+            """,
+            macros: macros
+        )
+    }
+
+    func testMethodCacheableOverridesTTL() {
+        assertMacroExpansion(
+            """
+            @Service
+            protocol UserService {
+                @Get("users")
+                @Cacheable(ttl: 60)
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+
+            struct UserServiceClient: UserService {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+                func listUsers() async throws -> RESTResponse<[User]> {
+                    let request = RESTRequest(
+                        url: "users",
+                        method: .get
+                    )
+                    return try await client.send(request, cacheable: true, ttl: 60)
+                }
+            }
+            """,
+            macros: macros
+        )
+    }
+
+    func testMethodCacheableRemovesTTL() {
+        assertMacroExpansion(
+            """
+            @Service
+            @Cacheable(ttl: 300)
+            protocol UserService {
+                @Get("users")
+                @Cacheable
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+
+            struct UserServiceClient: UserService {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+                func listUsers() async throws -> RESTResponse<[User]> {
+                    let request = RESTRequest(
+                        url: "users",
+                        method: .get
+                    )
+                    return try await client.send(request, cacheable: true, ttl: nil)
+                }
+            }
+            """,
+            macros: macros
+        )
+    }
+
+    func testNoCacheOptOut() {
+        assertMacroExpansion(
+            """
+            @Service
+            @Cacheable(ttl: 300)
+            protocol UserService {
+                @Get("users")
+                func listUsers() async throws -> RESTResponse<[User]>
+                @Get("health")
+                @NoCache
+                func health() async throws -> RESTResponse<Status>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func listUsers() async throws -> RESTResponse<[User]>
+                func health() async throws -> RESTResponse<Status>
+            }
+
+            struct UserServiceClient: UserService {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+                func listUsers() async throws -> RESTResponse<[User]> {
+                    let request = RESTRequest(
+                        url: "users",
+                        method: .get
+                    )
+                    return try await client.send(request, cacheable: true, ttl: 300)
+                }
+                func health() async throws -> RESTResponse<Status> {
+                    let request = RESTRequest(
+                        url: "health",
+                        method: .get
+                    )
+                    return try await client.send(request)
+                }
+            }
+            """,
+            macros: macros
+        )
+    }
+
+    func testMaxEntriesOnMethodEmitsDiagnostic() {
+        assertMacroExpansion(
+            """
+            @Service
+            protocol UserService {
+                @Get("users")
+                @Cacheable(maxEntries: 100)
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func listUsers() async throws -> RESTResponse<[User]>
+            }
+
+            struct UserServiceClient: UserService {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "maxEntries is only valid on the @Service protocol, not on a method",
                     line: 3,
                     column: 5
                 )
