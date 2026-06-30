@@ -1,233 +1,301 @@
-# REST
+# rest
 
-A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). You describe an API as an annotated protocol and the `@Service` macro generates a type-safe client that handles retry, default headers, response caching, and automatic token refresh for you — similar to Retrofit on Android.
+A high-level HTTP client for REST APIs built on [Alamofire](https://github.com/Alamofire/Alamofire). You describe your API as a Swift `protocol` and the `@Service` macro generates a fully type-safe client for you. Handles retry, caching, default headers, and automatic token refresh so you only write request logic.
+
+## Installation
+
+Add the package to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/vegidio/ios-sak.git", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "REST", package: "ios-sak"),
+        ]
+    ),
+]
+```
+
+Then import it where needed:
+
+```swift
+import REST
+```
 
 ## Quick start
 
-Describe your API as a protocol, annotate it with `@Service`, and construct the generated client directly — only `baseURL` is required:
+Describe your API as a `protocol` annotated with `@Service`. Each method declares the **decoded body type directly** (e.g. `-> User`) — the generated client method returns a `RESTResponse<User>` wrapping it.
 
 ```swift
-struct User: Decodable, Sendable { let id: Int; let name: String }
-struct NewUser: Encodable, Sendable { let name: String }
+import REST
+
+struct User: Decodable, Sendable {
+    let id: Int
+    let name: String
+}
 
 @Service
 protocol UserService {
     @Get("users/{id}")
     func getUser(id: Path<Int>) async throws -> User
-
-    @Get("users")
-    func listUsers(page: Query<Int>) async throws -> [User]
-
-    @Post("users")
-    func createUser(user: Body<NewUser>) async throws -> User
-
-    @Get("public/config")
-    @SkipAuth
-    func config() async throws -> [String: String]
 }
 
-// `baseURL` lets the endpoint paths be relative. Each service owns its own configuration.
 let service = UserServiceClient(baseURL: "https://api.example.com")
 
-let user = try await service.getUser(id: 1).body   // "Alice"
-let users = try await service.listUsers(page: 1).body
-let created = try await service.createUser(user: NewUser(name: "Bob")).body
+let response = try await service.getUser(id: 1)
+print(response.body.name)    // "Alice"
+print(response.statusCode)   // 200
 ```
 
-The macro emits a standalone `struct UserServiceClient` that builds each `RESTRequest` and runs it for you. Every method must be `async throws` and declare its decoded body type `T` directly (e.g. `-> User`); the generated client method returns `RESTResponse<T>`, so call sites use `.body`, `.statusCode`, etc. on the result.
+`@Service protocol UserService` generates a `UserServiceClient` struct. The parameter markers (`Path`, `Query`, `Body`, `Header`) are transparent aliases — `Path<Int>` is just an `Int` at runtime — that tell the macro how to map each parameter onto the request. The **wire key is the parameter name** (so `id` fills the `{id}` placeholder).
 
-For endpoints with no response body (e.g. a `DELETE` returning `204 No Content`), **omit the return type**:
+## Sending requests
 
-```swift
-@Delete("users/{id}")
-func deleteUser(id: Path<Int>) async throws
-```
+### GET with query parameters
 
-The generated method is `@discardableResult` and returns `RESTResponse<EmptyResponse>`, so you can ignore the result (`try await service.deleteUser(id: 7)`) or capture it to read `.statusCode`/`.headers` — only the `body` is the empty placeholder.
-
-## Annotations
-
-| Annotation | Applies to | Effect |
-|---|---|---|
-| `@Service` | protocol | Generates the `<ProtocolName>Client` implementation |
-| `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` | method | HTTP method + path (relative to `baseURL`) |
-| `@SkipAuth` | method | Opts the request out of token injection |
-| `@Cacheable(ttl:maxEntries:)` | protocol / method | Caches responses in memory (see [Caching](#caching)) |
-| `@NoCache` | method | Opts a method out when the service caches by default |
-| `@Retry(maxAttempts:delay:)` | protocol / method | Sets / overrides the retry policy (see [Retry](#retry)) |
-| `@NoRetry` | protocol / method | Disables retry for the service or a method |
-| `Path<T>` | parameter | Substitutes a `{name}` placeholder in the path |
-| `Query<T>` | parameter | Sent as a URL query item |
-| `Body<T>` | parameter | JSON-encoded request body (max one per request) |
-| `Header<T>` | parameter | Sent as a request header |
+Mark a parameter with `Query<T>` to send it as a URL query item named after the parameter:
 
 ```swift
 @Service
-protocol ArticleService {
-    @Get("articles/{id}")
-    func article(id: Path<Int>, fields: Query<String>) async throws -> Article
-
-    @Post("articles")
-    func create(article: Body<NewArticle>, idempotencyKey: Header<String>) async throws -> Article
+protocol UserService {
+    @Get("users")
+    func listUsers(page: Query<Int>, limit: Query<Int>) async throws -> [User]
 }
+
+let response = try await service.listUsers(page: 1, limit: 20)
+// GET /users?page=1&limit=20
 ```
 
-A `Body` value is JSON-encoded automatically and `Content-Type: application/json` is set for you. Per-method `Header` values win over the configuration's `defaultHeaders`.
+### POST with auto-encoded body
 
-> **Note on parameter markers:** Swift does not allow attributes on function parameters, so the parameter tags are *transparent generic type aliases* (`Path<Int>` is literally `Int` at runtime). The **wire key is the parameter name**: a `{id}` placeholder matches the parameter named `id`, and `page: Query<Int>` sends `?page=`. Path/query/header values are interpolated as strings, so use `CustomStringConvertible` types (scalars, `String`).
+Mark a parameter with `Body<T>` (any `Encodable` value) — it is JSON-encoded automatically and `Content-Type: application/json` is set for you:
+
+```swift
+struct NewUser: Encodable, Sendable {
+    let name: String
+}
+
+@Service
+protocol UserService {
+    @Post("users")
+    func createUser(user: Body<NewUser>) async throws -> User
+}
+
+let response = try await service.createUser(user: NewUser(name: "Alice"))
+```
+
+At most one `Body` parameter is allowed per method.
+
+### Custom per-request headers
+
+Mark a parameter with `Header<T>` to send it as a request header named after the parameter. Per-request headers always take priority over `defaultHeaders`:
+
+```swift
+@Service
+protocol UserService {
+    @Get("users/{id}")
+    func getUser(id: Path<Int>, requestId: Header<String>) async throws -> User
+}
+
+let response = try await service.getUser(id: 1, requestId: UUID().uuidString)
+// Sends header  requestId: <uuid>
+```
+
+### Endpoints with no response body
+
+A method declared **without a return value** targets endpoints that return no content (e.g. `204 No Content`). The generated call is discardable, so you can ignore the result:
+
+```swift
+@Service
+protocol UserService {
+    @Delete("users/{id}")
+    func deleteUser(id: Path<Int>) async throws
+}
+
+try await service.deleteUser(id: 1)              // result discarded
+let response = try await service.deleteUser(id: 1)
+print(response.statusCode)                       // 204
+```
+
+All five HTTP verbs are available as macros: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`.
 
 ## Error handling
 
-All failures are thrown as `RESTError`:
+All failures are thrown as a case of `RESTError`:
 
 | Case | When |
-|---|---|
+|------|------|
 | `.invalidURL` | The URL string could not be parsed |
 | `.network(Error)` | A transport-level failure (no connection, timeout, etc.) |
-| `.httpError(statusCode:data:)` | Server returned a non-2xx status |
-| `.decodingError(Error)` | Response body could not be decoded into `T` |
+| `.httpError(statusCode: Int, data: Data)` | Server returned a non-2xx status after all retries; `data` is the raw response body |
+| `.decodingError(Error)` | Response body could not be decoded into the expected type |
 
 ```swift
 do {
-    let user = try await service.getUser(id: 1).body
-} catch RESTError.httpError(let code, let data) {
-    print("Server error \(code)")
-} catch RESTError.network(let error) {
-    print("Network failure: \(error)")
+    let response = try await service.getUser(id: 1)
+    print(response.body)
+} catch let error as RESTError {
+    switch error {
+    case let .httpError(statusCode, data):
+        let body = String(data: data, encoding: .utf8) ?? ""
+        print("Server error \(statusCode): \(body)")
+    case let .network(cause):
+        print("Network failure: \(cause)")
+    case let .decodingError(cause):
+        print("Could not decode response: \(cause)")
+    case .invalidURL:
+        print("Invalid URL")
+    }
 }
 ```
 
 ## Configuration
 
-Most behaviour is passed as parameters when you create a service client (caching and retry are configured by annotation instead — see [Caching](#caching) and [Retry](#retry)). Only `baseURL` is required; everything else is optional with sensible defaults, and arguments can be supplied in any order.
-
-### Base URL
-
-Set `baseURL` so the annotated endpoint paths can be relative. Requests whose URL is already absolute (`http`/`https`) are sent unchanged.
-
-```swift
-let service = UserServiceClient(baseURL: "https://api.example.com")
-// @Get("users/1") → https://api.example.com/users/1
-```
+All behaviour is configured through the generated client's initializer and the macro annotations on your service.
 
 ### Default headers
 
-Headers added to every request. A per-method `Header<T>` with the same name takes priority.
+Headers added to every request. A header already present on an individual request (via `Header<T>`) takes priority.
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
     defaultHeaders: [
         "Accept": "application/json",
-        "X-API-Version": "2"
+        "X-API-Version": "2",
     ]
 )
 ```
 
 ### Retry
 
-Failed **idempotent** requests (`GET`, `PUT`, `DELETE`) are retried automatically; `POST` and `PATCH` are never retried, to avoid duplicating a side effect. The default policy retries up to 3 times with a 1-second delay.
+Failed requests are retried automatically. The default policy retries up to 3 times with a 1-second delay, and triggers on network failures and non-2xx responses. **Only idempotent methods (GET, PUT, DELETE) are retried** — POST and PATCH are never retried, to avoid duplicating side effects. Authentication failures (401) are excluded here and handled by token refresh instead (see [Authentication](#authentication)).
 
-Retry is configured **by annotation** (there is nothing to pass at the call site). A **protocol-level** `@Retry` / `@NoRetry` sets the **client-wide** policy — `@Retry(maxAttempts:delay:)` to customize it, `@NoRetry` to disable retry entirely:
-
-```swift
-@Service
-@Retry(maxAttempts: 5, delay: 2.0)   // client-wide policy (or @NoRetry to disable)
-protocol UserService { /* … */ }
-
-let service = UserServiceClient(baseURL: "https://api.example.com")
-```
-
-Override or disable retry for a **single method** by annotating the method:
+Set the baseline policy for the whole service with `@Retry` on the `@Service` protocol:
 
 ```swift
 @Service
-@Retry(maxAttempts: 5)                  // client-wide default
+@Retry(maxAttempts: 5, delay: 2.0)   // applies to every idempotent request
 protocol UserService {
     @Get("users")
-    func listUsers() async throws -> [User]            // inherits → 5
+    func listUsers() async throws -> [User]
+}
+```
 
-    @Get("flaky")
-    @Retry(maxAttempts: 10, delay: 0.5)
-    func flaky() async throws -> Thing                 // overrides → 10
+Override it on individual methods. `@Retry` on a method uses a different policy just for that request; `@NoRetry` disables retry for that request:
+
+```swift
+@Service
+@Retry(maxAttempts: 5, delay: 2.0)
+protocol UserService {
+    @Get("users")
+    func listUsers() async throws -> [User]            // 5 attempts (from the service)
+
+    @Get("users/{id}")
+    @Retry(maxAttempts: 2, delay: 0.5)
+    func getUser(id: Path<Int>) async throws -> User   // 2 attempts
 
     @Get("health")
     @NoRetry
-    func health() async throws -> Status               // retry disabled
+    func health() async throws -> Status               // never retried
 }
 ```
 
-| On a method | Effect |
-|---|---|
-| *(nothing)* | inherits the client-wide policy |
-| `@Retry(maxAttempts: 10, delay: 0.5)` | uses this policy instead |
-| `@NoRetry` | retry disabled for this method |
+> `@Retry` / `@NoRetry` are only valid on idempotent methods (GET/PUT/DELETE). Applying them to a POST or PATCH is a compile-time error.
 
-With no `@Retry`/`@NoRetry` anywhere, the default policy (3 retries, 1 s) applies. `@Retry` is only valid on idempotent methods — using it on a `@Post`/`@Patch` is a compile error (those are never retried). `@Retry` and `@NoRetry` cannot be combined on the same protocol or method.
+### Caching
 
-> Because retry is annotation-driven, the policy values are compile-time literals — there is no `retryPolicy:` parameter on the generated client. (This mirrors caching, which is also annotation-only.)
-
-## Caching
-
-Responses are cached in memory with `@Cacheable`. It can sit on the `@Service` protocol to cache every request by default, and/or on individual methods to enable or override caching for that request. `@NoCache` opts a method out. All caching is configured by annotation — there is nothing to pass at the call site.
+`GET` responses can be cached in memory with a configurable TTL. Annotate the `@Service` protocol with `@Cacheable` to cache **every** GET by default — the second call with the same URL returns the cached response without hitting the network:
 
 ```swift
 @Service
-@Cacheable(ttl: 300, maxEntries: 100)   // default: cache every request for 5 minutes
-protocol CatalogService {
-    @Get("products")
-    func products() async throws -> [Product]          // inherits → 300 s
+@Cacheable(ttl: 60, maxEntries: 100)   // entries expire after 60s; evict oldest past 100
+protocol UserService {
+    @Get("users")
+    func listUsers() async throws -> [User]
+}
 
-    @Get("products/{id}")
-    @Cacheable(ttl: 60)
-    func product(id: Path<Int>) async throws -> Product // override → 60 s
+let first = try await service.listUsers()   // hits the network, stores the response
+let second = try await service.listUsers()  // returned from cache (within TTL)
+```
 
-    @Get("categories")
-    @Cacheable
-    func categories() async throws -> [Category]        // cached, never expires
+You can also control caching per method:
 
-    @Get("inventory")
-    @NoCache
-    func inventory() async throws -> Inventory          // not cached
+```swift
+@Service
+@Cacheable(ttl: 60)
+protocol UserService {
+    @Get("users/{id}")
+    @Cacheable(ttl: 300)                     // override: cache this one for 5 minutes
+    func getUser(id: Path<Int>) async throws -> User
+
+    @Get("health")
+    @NoCache                                 // opt out: always hit the network
+    func health() async throws -> Status
 }
 ```
 
-The model is **presence-based** — the macro reads what you wrote, not a default value:
+- `ttl` is in seconds; omit it for entries that never expire (kept until evicted by `maxEntries`).
+- `maxEntries` is only valid on the `@Service` protocol, not on a method.
+- `@Cacheable` is only valid on GET methods.
 
-| On a method | Effect when the service has `@Cacheable(ttl: 300)` |
-|---|---|
-| *(nothing)* | inherits → cached for 300 s |
-| `@Cacheable` | cached with **no expiry** (removes the inherited TTL) |
-| `@Cacheable(ttl: 60)` | cached for **60 s** (overrides) |
-| `@NoCache` | **not cached** |
+### Logging
 
-- **`ttl`** — seconds a cached response stays valid. Omit it to cache with no expiry (kept until evicted by `maxEntries`).
-- **`maxEntries`** — caps the size of the single shared in-memory store. It is **service-level only**; using it on a method is a compile error.
-
-Cache entries are keyed by the resolved URL plus its query parameters, so the same call with different query values is cached separately.
-
-## Authentication
-
-> In the examples below, `session` is **your own** state holder — back it with an `actor`, an
-> `@Observable` model, or whatever your app already uses. iOS-SAK doesn't define or require any
-> particular type; the closures simply read from (and write back to) the source you provide.
-
-### Attaching a token to every request
-
-Provide `tokenProvider` to supply the `Authorization` header value. It is read **live on every request**, so a token kept in a reactive store or variable is always reflected — update the source and the next request uses the new value. The returned string is written to the `Authorization` header **verbatim**, so the closure owns the scheme (`"Bearer …"`, `"Token …"`, or a raw credential):
+Pass a `logging` closure to receive OkHttp-style request/response blocks. It runs on a non-invasive Alamofire event monitor, so it never touches the request/response hot path:
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
-    tokenProvider: { await session.authorizationHeader }   // e.g. "Bearer eyJ…", or nil when signed out
+    logging: { print($0) }
+)
+
+// --> GET https://api.example.com/users/1
+// Authorization: Bearer abc123
+// --> END GET
+// <-- 200 OK (42ms)
+// Content-Type: application/json
+// {"id":1,"name":"Alice"}
+// <-- END HTTP
+```
+
+### Custom decoder and session configuration
+
+Supply a custom `JSONDecoder` (e.g. for date or key-decoding strategies) and/or a custom `URLSessionConfiguration` (e.g. timeouts):
+
+```swift
+let decoder = JSONDecoder()
+decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+let configuration = URLSessionConfiguration.default
+configuration.timeoutIntervalForRequest = 30
+
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
+    decoder: decoder,
+    sessionConfiguration: configuration
 )
 ```
 
-Because it runs on the hot path of every request, keep it quick and lightweight — ideally a plain in-memory read, not a network/disk/Keychain round-trip.
+## Authentication
 
-### Skipping auth on specific requests
+### Attaching a token to every request
 
-Annotate a method with `@SkipAuth` to opt it out of token injection — useful for login or public endpoints:
+Use `tokenProvider` to supply the current `Authorization` header value. It is read on **every** request, so a token kept in a reactive store is always reflected — update the source and the next request uses the new value. The closure owns the scheme, so return the **verbatim** header value (e.g. `"Bearer …"`):
+
+```swift
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
+    tokenProvider: { await authStore.accessToken.map { "Bearer \($0)" } }
+)
+```
+
+### Skipping auth on specific endpoints
+
+Annotate a method with `@SkipAuth` to opt out of token injection — useful for login or public endpoints:
 
 ```swift
 @Service
@@ -235,89 +303,66 @@ protocol AuthService {
     @Post("auth/login")
     @SkipAuth
     func login(credentials: Body<Credentials>) async throws -> LoginResponse
+
+    @Post("auth/logout")
+    func logout() async throws   // token is injected normally
 }
 ```
 
 ### Automatic token refresh on 401
 
-Provide `tokenRefresher` to fetch a new token. When a request fails with an auth error, the token is refreshed and the request is retried **exactly once**; a response that still fails is surfaced as the original error (the refresh endpoint is never hammered). Concurrent requests that all fail share a single refresh call.
-
-By default an HTTP **401** is treated as the auth failure that triggers a refresh. Supply `isUnauthorized` only to override that (e.g. to also treat 403 as expiry).
-
-`tokenRefresher` must **return** the new verbatim `Authorization` value — it is applied directly to the retried request. When you also use `tokenProvider`, the refresher must additionally write the new value back (awaited) to the source `tokenProvider` reads from, so the live read on the retry sees it:
+Provide `tokenRefresher` to fetch a new token when a `401` is received. The client refreshes the token once and retries the original request automatically. Concurrent requests that all hit 401 share a single refresh call. The closure returns the **new verbatim `Authorization` header value**; when you also use `tokenProvider`, the refresher must write the new value back to the source it reads from:
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
     tokenRefresher: {
-        let header = try await refreshAuthorizationHeader()   // your refresh call, e.g. via a @SkipAuth service
-        await session.update(header)                          // write-back (awaited)
-        return header
+        let newToken = try await authApi.refresh(authStore.refreshToken)
+        await authStore.setAccessToken(newToken)   // write back for tokenProvider
+        return "Bearer \(newToken)"                // applied to retry the failed request
     },
-    tokenProvider: { await session.authorizationHeader }
+    tokenProvider: { await authStore.accessToken.map { "Bearer \($0)" } }
 )
 ```
 
-The write-back is race-free even with an `@Observable`/`@Published` source: mutating a Swift stored property is synchronous (only UI invalidation is deferred), so the next live read returns the new token — provided the write is awaited and the read/write share an isolation domain.
+By default a `401` status triggers the refresh. To customize what counts as an auth failure, pass `isUnauthorized`:
+
+```swift
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
+    isUnauthorized: { $0.statusCode == 401 || $0.statusCode == 419 },
+    tokenRefresher: { /* ... */ "Bearer \(newToken)" }
+)
+```
 
 ### Preemptive JWT refresh
 
-Avoid 401 errors entirely by refreshing the token before it expires. Use `jwtExpiryDate(from:)` to extract the expiry date from the JWT (store it alongside the token when you sign in) and `preemptiveRefreshLeadTime` to control how far in advance to refresh (default: 60 seconds). All three closures can read the same async source:
+Avoid 401s entirely by refreshing the token before it expires. Provide `tokenExpiryDate` to report the current token's expiry, and the client refreshes automatically once the token falls within `preemptiveRefreshLeadTime` of expiring (default: 60 seconds). The bundled `jwtExpiryDate(from:)` helper reads the `exp` claim out of a JWT (decoding only — it does not verify the signature):
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
-    tokenExpiryDate: { await session.expiry },              // e.g. jwtExpiryDate(from: token)
-    preemptiveRefreshLeadTime: 60,                           // refresh 60 s before expiry
-    tokenRefresher: { /* same as above */ },
-    tokenProvider: { await session.authorizationHeader }
+    tokenExpiryDate: { await authStore.accessToken.flatMap(jwtExpiryDate(from:)) },
+    preemptiveRefreshLeadTime: 60,   // refresh 60s before expiry
+    tokenRefresher: {
+        let newToken = try await authApi.refresh(authStore.refreshToken)
+        await authStore.setAccessToken(newToken)
+        return "Bearer \(newToken)"
+    },
+    tokenProvider: { await authStore.accessToken.map { "Bearer \($0)" } }
 )
 ```
-
-Refresh is **lazy/inline**: the expiry is checked just before each outgoing request, so the token is fresh when it goes out. There is no background timer (an idle app simply refreshes just-in-time on its next request).
-
-## Logging
-
-Pass a `logging` closure to trace every request and response, mirroring OkHttp's `HttpLoggingInterceptor` at `BODY` level. It is a `LoggingPolicy` — `@Sendable (String) -> Void` — that receives one formatted, multi-line entry per request and per response. Wire it to `print` in development, or to a custom sink:
-
-```swift
-let service = UserServiceClient(
-    baseURL: "https://api.example.com",
-    logging: { print($0) }   // or a custom sink
-)
-```
-
-Sample output for a `GET` request:
-
-```
---> GET https://api.example.com/users/7
-Authorization: Bearer tok123
---> END GET
-
-<-- 200 OK (22ms)
-Content-Type: application/json
-Content-Length: 24
-
-{"id":7,"name":"Alice"}
-<-- END HTTP
-```
-
-Notes:
-
-- The logged request block includes the injected `Authorization` header, so logging pairs with authentication.
-- Requests are logged **per attempt**. A generic retry re-issues a fresh request, so each attempt logs its own request *and* response block; only the intra-attempt auth refresh-and-retry (on a 401) logs a single settled response.
-- A transport failure with no HTTP response logs a single line: `<-- HTTP FAILED: <message>`.
-- The closure runs on **every** request — keep it cheap, and gate it behind a debug flag (or omit `logging` entirely) in production builds.
 
 ## Key types
 
 | Type | Role |
-|---|---|
-| `@Service` + `@Get`/`@Post`/… | Generate a declarative, type-safe client from a protocol |
-| `@Cacheable` / `@NoCache` | Opt requests into / out of in-memory response caching |
-| `@Retry` / `@NoRetry` | Override or disable automatic retry per service or method |
-| `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
-| `RetryPolicy` | `maxAttempts` + `delay` |
-| `RESTError` | Typed error thrown on failure |
-| `LoggingPolicy` | `@Sendable (String) -> Void` sink for request/response tracing |
-| `jwtExpiryDate(from:)` | Extracts `exp` claim from a JWT as a `Date` |
+|------|------|
+| `@Service` | Attach to a `protocol` to generate a `<Protocol>Client` struct — the single entry point |
+| `<Protocol>Client` | Generated client; create once with your `baseURL` and configuration, reuse everywhere |
+| `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` | Declare a method's HTTP verb and path |
+| `Path<T>` / `Query<T>` / `Body<T>` / `Header<T>` | Mark how each parameter maps onto the request (keyed by parameter name) |
+| `@SkipAuth` | Skip auth injection on a single endpoint |
+| `@Cacheable` / `@NoCache` | Enable / disable in-memory GET response caching (service- or method-level) |
+| `@Retry` / `@NoRetry` | Set or disable the retry policy (service- or method-level; idempotent methods only) |
+| `RESTResponse<T>` | Decoded `body` + `statusCode` + `headers` |
+| `RESTError` | Error enum thrown on failure |
