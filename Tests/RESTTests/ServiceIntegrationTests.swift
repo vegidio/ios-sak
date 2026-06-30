@@ -15,7 +15,10 @@ private struct NewUser: Encodable, Sendable {
 
 // MARK: - Annotated service
 
+// `@Retry(delay: 0)` keeps the auth-refresh tests fast (the refresh retry uses the policy's delay);
+// `maxAttempts: 3` matches the default so the "fires once despite a retry budget" test still holds.
 @Service
+@Retry(maxAttempts: 3, delay: 0)
 private protocol UserService {
     @Get("users/{id}")
     func getUser(id: Path<Int>) async throws -> User
@@ -48,14 +51,35 @@ private protocol CachedService {
     func createUser(user: Body<NewUser>) async throws -> User
 }
 
-// For retry-idempotency tests.
+// For retry-idempotency tests. Client-wide policy set via the protocol-level @Retry; delay 0 keeps
+// the test fast, maxAttempts 2 → one initial try + two retries = 3 requests.
 @Service
+@Retry(maxAttempts: 2, delay: 0)
 private protocol RetryService {
     @Get("flaky")
     func flakyGet() async throws -> [String: String]
 
     @Post("submit")
     func submit(payload: Body<NewUser>) async throws -> [String: String]
+
+    // Overrides the client-wide policy with a larger attempt budget.
+    @Get("flaky")
+    @Retry(maxAttempts: 4, delay: 0)
+    func overrideGet() async throws -> [String: String]
+
+    // Opts out of retry entirely despite the client-wide policy.
+    @Get("flaky")
+    @NoRetry
+    func noRetryGet() async throws -> [String: String]
+}
+
+// Client-wide retry configured via a protocol-level @Retry — the generated init has no
+// `retryPolicy:` param (the annotation is authoritative).
+@Service
+@Retry(maxAttempts: 2, delay: 0)
+private protocol ProtocolRetryService {
+    @Get("flaky")
+    func flakyGet() async throws -> [String: String]
 }
 
 // For empty-body (204 No Content) tests. No return type — the generated method is
@@ -95,12 +119,15 @@ struct ServiceIntegrationTests {
     private func makeRetryService(baseURL: String) -> RetryServiceClient {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [StubURLProtocol.self]
-        // delay 0 keeps the test fast; maxAttempts 2 → one initial try + two retries = 3 requests.
-        return RetryServiceClient(
-            baseURL: baseURL,
-            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
-            sessionConfiguration: sessionConfig
-        )
+        // The client-wide retry policy comes from RetryService's protocol-level @Retry annotation.
+        return RetryServiceClient(baseURL: baseURL, sessionConfiguration: sessionConfig)
+    }
+
+    private func makeProtocolRetryService(baseURL: String) -> ProtocolRetryServiceClient {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubURLProtocol.self]
+        // No `retryPolicy:` argument — the client-wide policy comes from the protocol-level @Retry.
+        return ProtocolRetryServiceClient(baseURL: baseURL, sessionConfiguration: sessionConfig)
     }
 
     private func makeEmptyBodyService(baseURL: String) -> EmptyBodyServiceClient {
@@ -244,6 +271,65 @@ struct ServiceIntegrationTests {
         #expect(StubURLProtocol.requestCount == 1)
     }
 
+    @Test("@Retry overrides the client-wide policy with a larger attempt budget")
+    func methodRetryOverrideUsesLargerBudget() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (500, Data()) }   // never recovers
+
+        let service = makeRetryService(baseURL: "https://api.example.com")
+        await #expect(throws: RESTError.self) {
+            _ = try await service.overrideGet()
+        }
+
+        // @Retry(maxAttempts: 4) → initial attempt + 4 retries = 5 requests (vs the client-wide 3).
+        #expect(StubURLProtocol.requestCount == 5)
+    }
+
+    @Test("@Retry recovers once the endpoint stops failing")
+    func methodRetryRecoversAfterTransientFailures() async throws {
+        StubURLProtocol.reset()
+        // Fail the first two attempts, then succeed.
+        StubURLProtocol.respond { _ in
+            StubURLProtocol.requestCount <= 2
+                ? (503, Data())
+                : (200, try! JSONEncoder().encode(["status": "ok"]))
+        }
+
+        let service = makeRetryService(baseURL: "https://api.example.com")
+        let response = try await service.overrideGet()
+
+        #expect(StubURLProtocol.requestCount == 3)
+        #expect(response.body["status"] == "ok")
+    }
+
+    @Test("@NoRetry disables retry despite the client-wide policy")
+    func methodNoRetryDisablesRetry() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (500, Data()) }
+
+        let service = makeRetryService(baseURL: "https://api.example.com")
+        await #expect(throws: RESTError.self) {
+            _ = try await service.noRetryGet()
+        }
+
+        // Exactly one request — @NoRetry suppresses the client-wide retry policy.
+        #expect(StubURLProtocol.requestCount == 1)
+    }
+
+    @Test("a protocol-level @Retry drives the client-wide retry policy")
+    func protocolLevelRetryDrivesClientWidePolicy() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (500, Data()) }
+
+        let service = makeProtocolRetryService(baseURL: "https://api.example.com")
+        await #expect(throws: RESTError.self) {
+            _ = try await service.flakyGet()
+        }
+
+        // @Retry(maxAttempts: 2) baked in → initial attempt + 2 retries = 3 requests.
+        #expect(StubURLProtocol.requestCount == 3)
+    }
+
     // MARK: - Empty body
 
     @Test("a void method exposes the 204 response metadata with an empty body")
@@ -323,7 +409,6 @@ struct ServiceIntegrationTests {
         let refreshCount = Counter()
         let service = UserServiceClient(
             baseURL: "https://api.example.com",
-            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
             tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
             sessionConfiguration: stubSessionConfig()
         )
@@ -347,7 +432,6 @@ struct ServiceIntegrationTests {
         let refreshCount = Counter()
         let service = UserServiceClient(
             baseURL: "https://api.example.com",
-            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
             // No isUnauthorized — engine defaults to treating 401 as the auth failure.
             tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
             sessionConfiguration: stubSessionConfig()
@@ -367,7 +451,6 @@ struct ServiceIntegrationTests {
         let refreshCount = Counter()
         let service = UserServiceClient(
             baseURL: "https://api.example.com",
-            retryPolicy: RetryPolicy(maxAttempts: 3, delay: 0),
             tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
             sessionConfiguration: stubSessionConfig()
         )
@@ -376,7 +459,8 @@ struct ServiceIntegrationTests {
             _ = try await service.getUser(id: 1)
         }
 
-        // Exactly one refresh and one retry (initial + one retry = 2 requests), despite maxAttempts 3.
+        // Exactly one refresh and one retry (initial + one retry = 2 requests), despite the
+        // client-wide @Retry(maxAttempts: 3) — auth refresh is independent and fires once.
         #expect(await refreshCount.value == 1)
         #expect(StubURLProtocol.requestCount == 2)
     }

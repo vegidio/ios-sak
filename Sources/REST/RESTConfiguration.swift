@@ -11,6 +11,18 @@ public struct RetryPolicy: Sendable {
     }
 }
 
+/// Per-request retry decision layered over the client-wide `retryPolicy`. The `@Service` macro emits
+/// `.override`/`.disabled` from the `@Retry`/`@NoRetry` annotations; `.inherit` (the default) falls
+/// back to the policy passed to the client init.
+public enum RetryOverride: Sendable {
+    /// Use the client-level `retryPolicy`.
+    case inherit
+    /// Disable automatic retry for this request.
+    case disabled
+    /// Use this policy instead of the client-level one for this request.
+    case override(RetryPolicy)
+}
+
 /// Internal bundle of settings for `RESTClient`. Not part of the public API — consumers pass
 /// these settings directly to a `@Service` client's (or `RESTClient`'s) init.
 struct RESTConfiguration: Sendable {
@@ -44,6 +56,14 @@ struct RESTConfiguration: Sendable {
     /// none. Read on **every** request, so a token kept in a reactive store/variable is always
     /// reflected — update the source and the next request uses the new value.
     var tokenProvider: (@Sendable () async -> String?)?
+
+    /// Resolved auth-failure predicate: `isUnauthorized` when supplied, otherwise the default that
+    /// treats HTTP 401 as the auth failure. Single source of truth shared by `RESTClient.send`
+    /// (which excludes auth failures from generic retry) and `APIInterceptor.retry` (which refreshes
+    /// the token on them) — the two must agree by design.
+    var authFailurePredicate: @Sendable (HTTPURLResponse) -> Bool {
+        isUnauthorized ?? { $0.statusCode == 401 }
+    }
 
     init(
         baseURL: String? = nil,

@@ -54,6 +54,8 @@ The generated method is `@discardableResult` and returns `RESTResponse<EmptyResp
 | `@SkipAuth` | method | Opts the request out of token injection |
 | `@Cacheable(ttl:maxEntries:)` | protocol / method | Caches responses in memory (see [Caching](#caching)) |
 | `@NoCache` | method | Opts a method out when the service caches by default |
+| `@Retry(maxAttempts:delay:)` | protocol / method | Sets / overrides the retry policy (see [Retry](#retry)) |
+| `@NoRetry` | protocol / method | Disables retry for the service or a method |
 | `Path<T>` | parameter | Substitutes a `{name}` placeholder in the path |
 | `Query<T>` | parameter | Sent as a URL query item |
 | `Body<T>` | parameter | JSON-encoded request body (max one per request) |
@@ -97,7 +99,7 @@ do {
 
 ## Configuration
 
-All behaviour is passed as parameters when you create a service client. Only `baseURL` is required; everything else is optional with sensible defaults, and arguments can be supplied in any order.
+Most behaviour is passed as parameters when you create a service client (caching and retry are configured by annotation instead — see [Caching](#caching) and [Retry](#retry)). Only `baseURL` is required; everything else is optional with sensible defaults, and arguments can be supplied in any order.
 
 ### Base URL
 
@@ -124,14 +126,46 @@ let service = UserServiceClient(
 
 ### Retry
 
-Failed requests are retried automatically. The default policy retries up to 3 times with a 1-second delay. Set `retryPolicy: nil` to disable.
+Failed **idempotent** requests (`GET`, `PUT`, `DELETE`) are retried automatically; `POST` and `PATCH` are never retried, to avoid duplicating a side effect. The default policy retries up to 3 times with a 1-second delay.
+
+Retry is configured **by annotation** (there is nothing to pass at the call site). A **protocol-level** `@Retry` / `@NoRetry` sets the **client-wide** policy — `@Retry(maxAttempts:delay:)` to customize it, `@NoRetry` to disable retry entirely:
 
 ```swift
-let service = UserServiceClient(
-    baseURL: "https://api.example.com",
-    retryPolicy: RetryPolicy(maxAttempts: 5, delay: 2.0)
-)
+@Service
+@Retry(maxAttempts: 5, delay: 2.0)   // client-wide policy (or @NoRetry to disable)
+protocol UserService { /* … */ }
+
+let service = UserServiceClient(baseURL: "https://api.example.com")
 ```
+
+Override or disable retry for a **single method** by annotating the method:
+
+```swift
+@Service
+@Retry(maxAttempts: 5)                  // client-wide default
+protocol UserService {
+    @Get("users")
+    func listUsers() async throws -> [User]            // inherits → 5
+
+    @Get("flaky")
+    @Retry(maxAttempts: 10, delay: 0.5)
+    func flaky() async throws -> Thing                 // overrides → 10
+
+    @Get("health")
+    @NoRetry
+    func health() async throws -> Status               // retry disabled
+}
+```
+
+| On a method | Effect |
+|---|---|
+| *(nothing)* | inherits the client-wide policy |
+| `@Retry(maxAttempts: 10, delay: 0.5)` | uses this policy instead |
+| `@NoRetry` | retry disabled for this method |
+
+With no `@Retry`/`@NoRetry` anywhere, the default policy (3 retries, 1 s) applies. `@Retry` is only valid on idempotent methods — using it on a `@Post`/`@Patch` is a compile error (those are never retried). `@Retry` and `@NoRetry` cannot be combined on the same protocol or method.
+
+> Because retry is annotation-driven, the policy values are compile-time literals — there is no `retryPolicy:` parameter on the generated client. (This mirrors caching, which is also annotation-only.)
 
 ## Caching
 
@@ -271,7 +305,7 @@ Content-Length: 24
 Notes:
 
 - The logged request block includes the injected `Authorization` header, so logging pairs with authentication.
-- Requests are logged **per attempt** (each retry / refresh-and-retry is a separate request block), while the **final** settled response is logged once — intermediate failing responses that trigger a retry are not logged individually.
+- Requests are logged **per attempt**. A generic retry re-issues a fresh request, so each attempt logs its own request *and* response block; only the intra-attempt auth refresh-and-retry (on a 401) logs a single settled response.
 - A transport failure with no HTTP response logs a single line: `<-- HTTP FAILED: <message>`.
 - The closure runs on **every** request — keep it cheap, and gate it behind a debug flag (or omit `logging` entirely) in production builds.
 
@@ -281,6 +315,7 @@ Notes:
 |---|---|
 | `@Service` + `@Get`/`@Post`/… | Generate a declarative, type-safe client from a protocol |
 | `@Cacheable` / `@NoCache` | Opt requests into / out of in-memory response caching |
+| `@Retry` / `@NoRetry` | Override or disable automatic retry per service or method |
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
 | `RetryPolicy` | `maxAttempts` + `delay` |
 | `RESTError` | Typed error thrown on failure |

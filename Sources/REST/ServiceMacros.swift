@@ -69,3 +69,19 @@ public macro Cacheable(ttl: TimeInterval? = nil, maxEntries: Int? = nil) = #exte
 /// Opts a method out of caching when the `@Service` protocol enables it with `@Cacheable`.
 @attached(peer)
 public macro NoCache() = #externalMacro(module: "RESTMacros", type: "NoCacheMacro")
+
+/// Overrides the client-wide retry policy for a single method.
+///
+/// The service-wide baseline stays the `retryPolicy:` parameter on the generated client's init; apply
+/// `@Retry` to a method to use a different policy just for that request. Only valid on idempotent
+/// methods (GET/PUT/DELETE) — the engine never retries POST/PATCH, so `@Retry` on those is an error.
+///
+/// - Parameters:
+///   - maxAttempts: Maximum number of attempts (including the first) before giving up.
+///   - delay: Seconds to wait between attempts.
+@attached(peer)
+public macro Retry(maxAttempts: Int = 3, delay: TimeInterval = 1.0) = #externalMacro(module: "RESTMacros", type: "RetryMacro")
+
+/// Disables automatic retry for a single method, regardless of the client-wide `retryPolicy`.
+@attached(peer)
+public macro NoRetry() = #externalMacro(module: "RESTMacros", type: "NoRetryMacro")

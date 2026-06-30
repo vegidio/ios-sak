@@ -122,7 +122,7 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
     ) {
         // Auth failure handling. Defaults to treating HTTP 401 as the auth failure when no
         // `isUnauthorized` predicate is supplied (mirrors the TS library's `refreshOn: [401]`).
-        let isAuthFailure = configuration.isUnauthorized ?? { $0.statusCode == 401 }
+        let isAuthFailure = configuration.authFailurePredicate
         if let httpResponse = request.response, isAuthFailure(httpResponse) {
             // Refresh + retry exactly once. A still-failing auth response is fatal — we never fall
             // through to the generic retry, so the refresh endpoint isn't hammered on a persistent
@@ -143,22 +143,8 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
             return
         }
 
-        // Generic retry for other failures (network errors, server errors, etc.), bounded by the
-        // retry policy and limited to idempotent methods. Retrying POST/PATCH after a transport
-        // failure risks duplicating a side effect (e.g. a payment the server already processed
-        // before the response was lost).
-        guard
-            let retryPolicy = configuration.retryPolicy,
-            request.retryCount < retryPolicy.maxAttempts
-        else {
-            completion(.doNotRetryWithError(error))
-            return
-        }
-        let method = request.request?.httpMethod.flatMap(HTTPMethod.init(rawValue:))
-        guard let method, HTTPMethod.idempotentMethods.contains(method) else {
-            completion(.doNotRetryWithError(error))
-            return
-        }
-        completion(.retryWithDelay(retryPolicy.delay))
+        // Generic retry (transport/server failures) is handled by `RESTClient.send`, which owns the
+        // effective per-request retry policy. The interceptor only drives the auth-refresh retry.
+        completion(.doNotRetryWithError(error))
     }
 }

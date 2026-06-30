@@ -26,6 +26,24 @@ public enum ServiceMacro: PeerMacro {
         // Service-wide caching default read from a `@Cacheable` on the protocol itself.
         let serviceCache = cacheable(in: protocolDecl.attributes)
 
+        // Retry is annotation-only: the generated init never exposes a `retryPolicy:` param. The
+        // client-wide policy is baked into the `RESTClient(...)` call from a protocol-level
+        // `@Retry`/`@NoRetry` (like `maxEntries`), defaulting to `RetryPolicy()` when unannotated.
+        let serviceRetry = retry(in: protocolDecl.attributes)
+        let serviceNoRetry = hasMarker("NoRetry", in: protocolDecl.attributes)
+        if serviceRetry != nil, serviceNoRetry {
+            context.diagnose(.error("@Service cannot combine @Retry and @NoRetry", at: protocolDecl))
+            return []
+        }
+        let retryCallArg: String     // in the RESTClient(...) call
+        if serviceNoRetry {
+            retryCallArg = "retryPolicy: nil,\n"
+        } else if let serviceRetry {
+            retryCallArg = "retryPolicy: RetryPolicy(\(serviceRetry)),\n"
+        } else {
+            retryCallArg = "retryPolicy: RetryPolicy(),\n"
+        }
+
         var methods: [String] = []
         for member in protocolDecl.memberBlock.members {
             guard let funcDecl = member.decl.as(FunctionDeclSyntax.self) else { continue }
@@ -45,7 +63,6 @@ public enum ServiceMacro: PeerMacro {
         \(access)init(
         baseURL: String,
         defaultHeaders: [String: String] = [:],
-        retryPolicy: RetryPolicy? = RetryPolicy(),
         tokenExpiryDate: (@Sendable () async -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
@@ -58,8 +75,7 @@ public enum ServiceMacro: PeerMacro {
         self.client = RESTClient(
         baseURL: baseURL,
         defaultHeaders: defaultHeaders,
-        retryPolicy: retryPolicy,
-        \(maxEntriesArg)tokenExpiryDate: tokenExpiryDate,
+        \(retryCallArg)\(maxEntriesArg)tokenExpiryDate: tokenExpiryDate,
         preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
         isUnauthorized: isUnauthorized,
         tokenRefresher: tokenRefresher,
@@ -227,9 +243,39 @@ public enum ServiceMacro: PeerMacro {
             return nil
         }
         let effectiveCache = hasMarker("NoCache", in: funcDecl) ? nil : (methodCache ?? serviceCache)
-        let sendCall = effectiveCache
-            .map { "client.send(request, cacheable: true, ttl: \($0.ttl ?? "nil"))" }
-            ?? "client.send(request)"
+
+        // Resolve effective retry for this method: @NoRetry disables it, an explicit @Retry overrides
+        // the client-wide policy (idempotent methods only), otherwise inherit the client-wide policy.
+        let methodRetry = retry(in: funcDecl.attributes)
+        let hasNoRetry = hasMarker("NoRetry", in: funcDecl)
+        if methodRetry != nil, hasNoRetry {
+            context.diagnose(.error("'\(funcName)' cannot combine @Retry and @NoRetry", at: funcDecl))
+            return nil
+        }
+        // Only idempotent methods are ever retried at the engine level, so a @Retry on a POST/PATCH
+        // would silently do nothing — reject it at compile time (mirrors the @Cacheable-on-non-GET rule).
+        // The list below is the compile-time mirror of the runtime `HTTPMethod.idempotentMethods`
+        // (the macro plugin can't import the REST module); keep the two in sync.
+        if methodRetry != nil, !["get", "put", "delete"].contains(httpMethod) {
+            context.diagnose(.error(
+                "@Retry only affects idempotent methods (GET/PUT/DELETE); '\(funcName)' is a \(httpMethod.uppercased()) request",
+                at: funcDecl
+            ))
+            return nil
+        }
+
+        // Compose the send call so caching and retry coexist; omitted args fall back to the defaults.
+        var sendArgs = ["request"]
+        if let effectiveCache {
+            sendArgs.append("cacheable: true")
+            sendArgs.append("ttl: \(effectiveCache.ttl ?? "nil")")
+        }
+        if hasNoRetry {
+            sendArgs.append("retry: .disabled")
+        } else if let methodRetry {
+            sendArgs.append("retry: .override(RetryPolicy(\(methodRetry)))")
+        }
+        let sendCall = "client.send(\(sendArgs.joined(separator: ", ")))"
 
         let discardable = isVoid ? "@discardableResult\n" : ""
         return """
@@ -282,10 +328,38 @@ public enum ServiceMacro: PeerMacro {
 
     /// Whether the function carries a marker attribute named `name` (e.g. `@SkipAuth`, `@NoCache`).
     private static func hasMarker(_ name: String, in funcDecl: FunctionDeclSyntax) -> Bool {
-        funcDecl.attributes.contains { attribute in
+        hasMarker(name, in: funcDecl.attributes)
+    }
+
+    /// Whether `attributes` contains a marker attribute named `name`.
+    private static func hasMarker(_ name: String, in attributes: AttributeListSyntax) -> Bool {
+        attributes.contains { attribute in
             attribute.as(AttributeSyntax.self)?
                 .attributeName.as(IdentifierTypeSyntax.self)?.name.text == name
         }
+    }
+
+    /// Returns the arguments written on a `@Retry` attribute, re-emitted verbatim for a
+    /// `RetryPolicy(...)` initializer call (e.g. `"maxAttempts: 5, delay: 2.0"`, or `""` for a bare
+    /// `@Retry`), or `nil` when no `@Retry` is present. The Optional carries presence; the empty
+    /// string is a legitimate value (bare `@Retry`).
+    private static func retry(in attributes: AttributeListSyntax) -> String? {
+        for attribute in attributes {
+            guard let attr = attribute.as(AttributeSyntax.self),
+                  attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Retry" else { continue }
+            var parts: [String] = []
+            if let list = attr.arguments?.as(LabeledExprListSyntax.self) {
+                for arg in list {
+                    if let label = arg.label?.text {
+                        parts.append("\(label): \(arg.expression.trimmedDescription)")
+                    } else {
+                        parts.append(arg.expression.trimmedDescription)
+                    }
+                }
+            }
+            return parts.joined(separator: ", ")
+        }
+        return nil
     }
 
     /// The arguments written on a `@Cacheable` attribute. Each field is the literal expression text

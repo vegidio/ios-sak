@@ -12,6 +12,11 @@ public actor RESTClient {
     private let cache: ResponseCache
     private let decoder: JSONDecoder
 
+    /// Status codes for which an empty response body is allowed. Constant, so it's built once rather
+    /// than per retry attempt. Empty bodies are permitted for every code so a no-content success
+    /// (e.g. 204) isn't a serialization failure; empty success bodies resolve to `EmptyResponse`.
+    private static let emptyResponseCodes = Set(100...599)
+
     public init(
         baseURL: String,
         defaultHeaders: [String: String] = [:],
@@ -62,10 +67,13 @@ public actor RESTClient {
     ///   - ttl: How long a cached response stays valid, in seconds. `nil` means the entry never
     ///     expires (it is kept until evicted by the cache's `maxEntries` limit). Ignored when
     ///     `cacheable` is `false`.
+    ///   - retry: Per-request retry decision layered over the client-wide `retryPolicy`. Defaults to
+    ///     `.inherit`. Only idempotent methods (GET/PUT/DELETE) are ever retried.
     public func send<T: Decodable & Sendable>(
         _ request: RESTRequest,
         cacheable: Bool = false,
-        ttl: TimeInterval? = nil
+        ttl: TimeInterval? = nil,
+        retry: RetryOverride = .inherit
     ) async throws -> RESTResponse<T> {
         var request = request
         request.url = Self.resolveURL(request.url, baseURL: configuration.baseURL)
@@ -91,38 +99,63 @@ public actor RESTClient {
             throw RESTError.invalidURL
         }
 
-        // Use Alamofire but manage validation manually to capture raw Data on errors. Empty bodies
-        // are allowed for every status code so a no-content success (e.g. 204) is not treated as a
-        // serialization failure; the raw `response.data` is still captured for error reporting, and
-        // empty success bodies resolve to `EmptyResponse` in `decodeBody`.
-        let dataTask = session.request(urlRequest)
-            .validate()
-            .serializingData(emptyResponseCodes: Set(100...599))
-        let response = await dataTask.response
-
-        // Surface network-level errors
-        if let afError = response.error {
-            throw translateAFError(afError, data: response.data ?? Data())
+        // Resolve the effective retry policy: a per-request override wins over the client-wide one.
+        let retryPolicy: RetryPolicy?
+        switch retry {
+        case .inherit: retryPolicy = configuration.retryPolicy
+        case .disabled: retryPolicy = nil
+        case .override(let policy): retryPolicy = policy
         }
+        let isAuthFailure = configuration.authFailurePredicate
 
-        guard let httpResponse = response.response else {
-            throw RESTError.network(URLError(.badServerResponse))
+        // Generic retry loop for transport/server failures, bounded by the effective policy and
+        // limited to idempotent methods (retrying POST/PATCH could duplicate a side effect). Auth
+        // (401) failures are excluded here: the interceptor already refreshes + retries them once,
+        // so a still-failing auth response is fatal rather than hammered by the generic loop.
+        var attempt = 0
+        while true {
+            // Use Alamofire but manage validation manually to capture raw Data on errors. The raw
+            // `response.data` is still captured for error reporting (see `emptyResponseCodes`).
+            let dataTask = session.request(urlRequest)
+                .validate()
+                .serializingData(emptyResponseCodes: Self.emptyResponseCodes)
+            let response = await dataTask.response
+
+            // Surface network-level errors, retrying first when the policy allows. A transport
+            // failure (no HTTP response) is retriable; an auth (401) failure is not (see above).
+            if let afError = response.error {
+                let isAuth = response.response.map(isAuthFailure) ?? false
+                if let retryPolicy,
+                   attempt < retryPolicy.maxAttempts,
+                   HTTPMethod.idempotentMethods.contains(request.method),
+                   !isAuth {
+                    attempt += 1
+                    let nanoseconds = UInt64(max(0, retryPolicy.delay) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    continue
+                }
+                throw translateAFError(afError, data: response.data ?? Data())
+            }
+
+            guard let httpResponse = response.response else {
+                throw RESTError.network(URLError(.badServerResponse))
+            }
+
+            let data = response.data ?? Data()
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
+            }
+
+            let body = try decodeBody(T.self, from: data)
+
+            // Store successful response in cache
+            if isCacheable, let cacheKey {
+                await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
+            }
+
+            return RESTResponse(body: body, urlResponse: httpResponse)
         }
-
-        let data = response.data ?? Data()
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
-        }
-
-        let body = try decodeBody(T.self, from: data)
-
-        // Store successful response in cache
-        if isCacheable, let cacheKey {
-            await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
-        }
-
-        return RESTResponse(body: body, urlResponse: httpResponse)
     }
 
     // MARK: - Private helpers
