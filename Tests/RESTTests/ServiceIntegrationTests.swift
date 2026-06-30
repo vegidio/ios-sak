@@ -380,6 +380,40 @@ struct ServiceIntegrationTests {
         #expect(await refreshCount.value == 1)
         #expect(StubURLProtocol.requestCount == 2)
     }
+
+    @Test("logging traces both the request and the response blocks")
+    func loggingTracesRequestAndResponse() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 7, name: "Alice"))) }
+
+        let logs = LogCollector()
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            tokenProvider: { "Bearer tok123" },
+            sessionConfiguration: stubSessionConfig(),
+            logging: { logs.append($0) }
+        )
+
+        _ = try await service.getUser(id: 7)
+
+        // The response block is emitted on Alamofire's monitor queue, which may settle slightly
+        // after `send` returns — poll briefly until the closing response marker arrives.
+        var combined = ""
+        for _ in 0..<100 {
+            combined = logs.all.joined(separator: "\n")
+            if combined.contains("<-- END HTTP") { break }
+            try await Task.sleep(nanoseconds: 10_000_000)  // 10ms
+        }
+
+        // Request block: includes the injected Authorization header.
+        #expect(combined.contains("--> GET https://api.example.com/users/7"))
+        #expect(combined.contains("Authorization: Bearer tok123"))
+        #expect(combined.contains("--> END GET"))
+        // Response block: status line + body + closing marker.
+        #expect(combined.contains("<-- 200 "))
+        #expect(combined.contains("\"name\":\"Alice\""))
+        #expect(combined.contains("<-- END HTTP"))
+    }
 }
 
 // MARK: - Test support
@@ -402,6 +436,15 @@ private actor TokenBox {
 private actor Counter {
     private(set) var value = 0
     func increment() { value += 1 }
+}
+
+/// Thread-safe sink for `logging` output. The closure may be invoked from Alamofire's monitor
+/// queue, so appends are guarded by a lock.
+private final class LogCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [String] = []
+    func append(_ message: String) { lock.lock(); entries.append(message); lock.unlock() }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return entries }
 }
 
 // MARK: - URLProtocol stub

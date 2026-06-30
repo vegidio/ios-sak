@@ -234,6 +234,39 @@ struct RESTClientTests {
         let config = RESTConfiguration()
         #expect(config.tokenProvider == nil)
     }
+
+    // MARK: - RequestLogger
+
+    @Test("formatRequest renders the OkHttp request block with a synthesized Content-Length")
+    func formatRequestWithBody() {
+        var urlRequest = URLRequest(url: URL(string: "https://api.example.com/users")!)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = Data("Hi?".utf8)
+
+        // Headers are emitted in sorted order, so Content-Length precedes Content-Type.
+        let log = RequestLogger.formatRequest(urlRequest)
+        #expect(log == """
+        --> POST https://api.example.com/users
+        Content-Length: 3
+        Content-Type: application/json
+
+        Hi?
+        --> END POST
+        """)
+    }
+
+    @Test("formatRequest omits the body section when there is no body")
+    func formatRequestNoBody() {
+        var urlRequest = URLRequest(url: URL(string: "https://api.example.com/users/7")!)
+        urlRequest.httpMethod = "GET"
+
+        let log = RequestLogger.formatRequest(urlRequest)
+        #expect(log == """
+        --> GET https://api.example.com/users/7
+        --> END GET
+        """)
+    }
 }
 
 // MARK: - Helpers

@@ -242,6 +242,39 @@ let service = UserServiceClient(
 
 Refresh is **lazy/inline**: the expiry is checked just before each outgoing request, so the token is fresh when it goes out. There is no background timer (an idle app simply refreshes just-in-time on its next request).
 
+## Logging
+
+Pass a `logging` closure to trace every request and response, mirroring OkHttp's `HttpLoggingInterceptor` at `BODY` level. It is a `LoggingPolicy` — `@Sendable (String) -> Void` — that receives one formatted, multi-line entry per request and per response. Wire it to `print` in development, or to a custom sink:
+
+```swift
+let service = UserServiceClient(
+    baseURL: "https://api.example.com",
+    logging: { print($0) }   // or a custom sink
+)
+```
+
+Sample output for a `GET` request:
+
+```
+--> GET https://api.example.com/users/7
+Authorization: Bearer tok123
+--> END GET
+
+<-- 200 OK (22ms)
+Content-Type: application/json
+Content-Length: 24
+
+{"id":7,"name":"Alice"}
+<-- END HTTP
+```
+
+Notes:
+
+- The logged request block includes the injected `Authorization` header, so logging pairs with authentication.
+- Requests are logged **per attempt** (each retry / refresh-and-retry is a separate request block), while the **final** settled response is logged once — intermediate failing responses that trigger a retry are not logged individually.
+- A transport failure with no HTTP response logs a single line: `<-- HTTP FAILED: <message>`.
+- The closure runs on **every** request — keep it cheap, and gate it behind a debug flag (or omit `logging` entirely) in production builds.
+
 ## Key types
 
 | Type | Role |
@@ -251,4 +284,5 @@ Refresh is **lazy/inline**: the expiry is checked just before each outgoing requ
 | `RESTResponse<T>` | Decoded response body + `HTTPURLResponse` |
 | `RetryPolicy` | `maxAttempts` + `delay` |
 | `RESTError` | Typed error thrown on failure |
+| `LoggingPolicy` | `@Sendable (String) -> Void` sink for request/response tracing |
 | `jwtExpiryDate(from:)` | Extracts `exp` claim from a JWT as a `Date` |

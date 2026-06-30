@@ -23,7 +23,8 @@ public actor RESTClient {
         tokenRefresher: (@Sendable () async throws -> String)? = nil,
         tokenProvider: (@Sendable () async -> String?)? = nil,
         decoder: JSONDecoder = JSONDecoder(),
-        sessionConfiguration: URLSessionConfiguration? = nil
+        sessionConfiguration: URLSessionConfiguration? = nil,
+        logging: LoggingPolicy? = nil
     ) {
         let configuration = RESTConfiguration(
             baseURL: baseURL,
@@ -37,7 +38,16 @@ public actor RESTClient {
         )
         let sessionConfig = sessionConfiguration ?? URLSessionConfiguration.af.default
         let interceptor = APIInterceptor(configuration: configuration)
-        self.session = Session(configuration: sessionConfig, interceptor: interceptor)
+
+        // Logging is wired purely at the Session layer via an Alamofire EventMonitor, so it never
+        // touches the request/response hot path. The monitor logs the adapted request (Authorization
+        // header injected by APIInterceptor) once per attempt and the final parsed response.
+        var eventMonitors: [any EventMonitor] = [AlamofireNotifications()]
+        if let logging {
+            eventMonitors.append(LoggingEventMonitor(logging: logging))
+        }
+
+        self.session = Session(configuration: sessionConfig, interceptor: interceptor, eventMonitors: eventMonitors)
         self.configuration = configuration
         self.cache = ResponseCache(maxEntries: maxEntries)
         self.decoder = decoder

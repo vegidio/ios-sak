@@ -52,7 +52,8 @@ public enum ServiceMacro: PeerMacro {
         tokenRefresher: (@Sendable () async throws -> String)? = nil,
         tokenProvider: (@Sendable () async -> String?)? = nil,
         decoder: JSONDecoder = JSONDecoder(),
-        sessionConfiguration: URLSessionConfiguration? = nil
+        sessionConfiguration: URLSessionConfiguration? = nil,
+        logging: LoggingPolicy? = nil
         ) {
         self.client = RESTClient(
         baseURL: baseURL,
@@ -64,7 +65,8 @@ public enum ServiceMacro: PeerMacro {
         tokenRefresher: tokenRefresher,
         tokenProvider: tokenProvider,
         decoder: decoder,
-        sessionConfiguration: sessionConfiguration
+        sessionConfiguration: sessionConfiguration,
+        logging: logging
         )
         }
         \(methods.joined(separator: "\n"))

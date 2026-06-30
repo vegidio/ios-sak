@@ -42,7 +42,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -54,7 +55,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func getUser(id: Int) async throws -> RESTResponse<User> {
@@ -96,7 +98,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -108,7 +111,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 public func listUsers(page: Int) async throws -> RESTResponse<[User]> {
@@ -151,7 +155,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -163,7 +168,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func createUser(user: NewUser) async throws -> RESTResponse<User> {
@@ -207,7 +213,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -219,7 +226,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func config() async throws -> RESTResponse<Config> {
@@ -261,7 +269,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -273,7 +282,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
 
@@ -316,7 +326,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -328,7 +339,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
 
@@ -372,7 +384,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -385,7 +398,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func getUser(id: Int) async throws -> RESTResponse<User> {
@@ -428,7 +442,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -440,7 +455,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func listUsers() async throws -> RESTResponse<[User]> {
@@ -484,7 +500,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -496,7 +513,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func listUsers() async throws -> RESTResponse<[User]> {
@@ -543,7 +561,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -555,7 +574,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 func listUsers() async throws -> RESTResponse<[User]> {
@@ -605,7 +625,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -617,7 +638,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
 
@@ -660,7 +682,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -672,7 +695,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
 
@@ -715,7 +739,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -727,7 +752,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
                 @discardableResult
@@ -771,7 +797,8 @@ final class ServiceMacroTests: XCTestCase {
                     tokenRefresher: (@Sendable () async throws -> String)? = nil,
                     tokenProvider: (@Sendable () async -> String?)? = nil,
                     decoder: JSONDecoder = JSONDecoder(),
-                    sessionConfiguration: URLSessionConfiguration? = nil
+                    sessionConfiguration: URLSessionConfiguration? = nil,
+                    logging: LoggingPolicy? = nil
                 ) {
                     self.client = RESTClient(
                         baseURL: baseURL,
@@ -783,7 +810,8 @@ final class ServiceMacroTests: XCTestCase {
                         tokenRefresher: tokenRefresher,
                         tokenProvider: tokenProvider,
                         decoder: decoder,
-                        sessionConfiguration: sessionConfiguration
+                        sessionConfiguration: sessionConfiguration,
+                        logging: logging
                     )
                 }
 
