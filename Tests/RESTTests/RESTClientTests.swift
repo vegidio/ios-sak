@@ -30,8 +30,9 @@ struct RESTClientTests {
 
     @Test("CacheEntry is not expired when TTL has not elapsed")
     func cacheEntryNotExpired() throws {
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
@@ -46,8 +47,9 @@ struct RESTClientTests {
 
     @Test("CacheEntry is expired when TTL has elapsed")
     func cacheEntryExpired() throws {
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
@@ -65,8 +67,9 @@ struct RESTClientTests {
     @Test("ResponseCache returns stored entry before TTL expires")
     func responseCacheHit() async throws {
         let cache = ResponseCache()
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
@@ -81,8 +84,9 @@ struct RESTClientTests {
     @Test("ResponseCache returns nil after TTL expires")
     func responseCacheMiss() async throws {
         let cache = ResponseCache()
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
@@ -96,8 +100,9 @@ struct RESTClientTests {
     @Test("ResponseCache keeps an entry with no TTL indefinitely")
     func responseCacheNoExpiry() async throws {
         let cache = ResponseCache()
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
@@ -112,8 +117,9 @@ struct RESTClientTests {
     @Test("ResponseCache honors the maxEntries count limit")
     func responseCacheMaxEntries() async throws {
         let cache = ResponseCache(maxEntries: 5)
+        let url = try #require(URL(string: "https://example.com"))
         let response = try #require(HTTPURLResponse(
-            url: #require(URL(string: "https://example.com")),
+            url: url,
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil

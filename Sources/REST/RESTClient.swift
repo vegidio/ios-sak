@@ -84,12 +84,8 @@ public actor RESTClient {
         let isCacheable = cacheable && request.method == .get
         let cacheKey = isCacheable ? ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters) : nil
 
-        // Return cached response if available and not expired
-        if isCacheable, let cacheKey {
-            if let entry = await cache.retrieve(forKey: cacheKey) {
-                let body = try decodeBody(T.self, from: entry.data)
-                return RESTResponse(body: body, urlResponse: entry.httpResponse)
-            }
+        if let cacheKey, let cached: RESTResponse<T> = try await cachedResponse(T.self, forKey: cacheKey) {
+            return cached
         }
 
         let urlRequest: URLRequest
@@ -99,13 +95,7 @@ public actor RESTClient {
             throw RESTError.invalidURL
         }
 
-        // Resolve the effective retry policy: a per-request override wins over the client-wide one.
-        let retryPolicy: RetryPolicy? = switch retry {
-        case .inherit: configuration.retryPolicy
-        case .disabled: nil
-        case let .override(policy): policy
-        }
-        let isAuthFailure = configuration.authFailurePredicate
+        let retryPolicy = effectiveRetryPolicy(for: retry)
 
         // Generic retry loop for transport/server failures, bounded by the effective policy and
         // limited to idempotent methods (retrying POST/PATCH could duplicate a side effect). Auth
@@ -115,46 +105,22 @@ public actor RESTClient {
         while true {
             // Use Alamofire but manage validation manually to capture raw Data on errors. The raw
             // `response.data` is still captured for error reporting (see `emptyResponseCodes`).
-            let dataTask = session.request(urlRequest)
+            let response = await session.request(urlRequest)
                 .validate()
                 .serializingData(emptyResponseCodes: Self.emptyResponseCodes)
-            let response = await dataTask.response
+                .response
 
-            // Surface network-level errors, retrying first when the policy allows. A transport
-            // failure (no HTTP response) is retriable; an auth (401) failure is not (see above).
             if let afError = response.error {
-                let isAuth = response.response.map(isAuthFailure) ?? false
-                if let retryPolicy,
-                   attempt < retryPolicy.maxAttempts,
-                   HTTPMethod.idempotentMethods.contains(request.method),
-                   !isAuth
-                {
+                if shouldRetry(method: request.method, http: response.response, attempt: attempt, policy: retryPolicy) {
                     attempt += 1
-                    let nanoseconds = UInt64(max(0, retryPolicy.delay) * 1_000_000_000)
+                    let nanoseconds = UInt64(max(0, retryPolicy?.delay ?? 0) * 1_000_000_000)
                     try? await Task.sleep(nanoseconds: nanoseconds)
                     continue
                 }
                 throw translateAFError(afError, data: response.data ?? Data())
             }
 
-            guard let httpResponse = response.response else {
-                throw RESTError.network(URLError(.badServerResponse))
-            }
-
-            let data = response.data ?? Data()
-
-            guard (200 ..< 300).contains(httpResponse.statusCode) else {
-                throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
-            }
-
-            let body = try decodeBody(T.self, from: data)
-
-            // Store successful response in cache
-            if isCacheable, let cacheKey {
-                await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
-            }
-
-            return RESTResponse(body: body, urlResponse: httpResponse)
+            return try await finalize(T.self, response: response, cacheKey: cacheKey, ttl: ttl)
         }
     }
 
@@ -173,6 +139,60 @@ public actor RESTClient {
         let trimmedBase = base.hasSuffix("/") ? String(base.dropLast()) : base
         let trimmedPath = url.hasPrefix("/") ? String(url.dropFirst()) : url
         return "\(trimmedBase)/\(trimmedPath)"
+    }
+
+    /// Returns the decoded cached response for `cacheKey`, or `nil` when nothing is cached.
+    private func cachedResponse<T: Decodable & Sendable>(
+        _: T.Type,
+        forKey cacheKey: String
+    ) async throws -> RESTResponse<T>? {
+        guard let entry = await cache.retrieve(forKey: cacheKey) else { return nil }
+        let body = try decodeBody(T.self, from: entry.data)
+        return RESTResponse(body: body, urlResponse: entry.httpResponse)
+    }
+
+    /// Resolves the effective retry policy: a per-request override wins over the client-wide one.
+    private func effectiveRetryPolicy(for retry: RetryOverride) -> RetryPolicy? {
+        switch retry {
+        case .inherit: configuration.retryPolicy
+        case .disabled: nil
+        case let .override(policy): policy
+        }
+    }
+
+    /// Whether a failed attempt should be retried: policy allows another attempt, the method is
+    /// idempotent, and the failure is not an auth (401) failure (those are handled by the interceptor).
+    private func shouldRetry(
+        method: HTTPMethod,
+        http: HTTPURLResponse?,
+        attempt: Int,
+        policy: RetryPolicy?
+    ) -> Bool {
+        guard let policy, attempt < policy.maxAttempts else { return false }
+        guard HTTPMethod.idempotentMethods.contains(method) else { return false }
+        let isAuth = http.map(configuration.authFailurePredicate) ?? false
+        return !isAuth
+    }
+
+    /// Validates a successful response, decodes its body as `T`, and caches it when `cacheKey` is set.
+    private func finalize<T: Decodable & Sendable>(
+        _: T.Type,
+        response: AFDataResponse<Data>,
+        cacheKey: String?,
+        ttl: TimeInterval?
+    ) async throws -> RESTResponse<T> {
+        guard let httpResponse = response.response else {
+            throw RESTError.network(URLError(.badServerResponse))
+        }
+        let data = response.data ?? Data()
+        guard (200 ..< 300).contains(httpResponse.statusCode) else {
+            throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
+        }
+        let body = try decodeBody(T.self, from: data)
+        if let cacheKey {
+            await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
+        }
+        return RESTResponse(body: body, urlResponse: httpResponse)
     }
 
     /// Decodes the response body as `T`, short-circuiting empty bodies (e.g. 204/205 No Content)

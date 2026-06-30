@@ -1,0 +1,25 @@
+# SwiftLint configuration — lint only the library sources.
+included:
+  - Sources
+
+# Defer to SwiftFormat's `wrapMultilineStatementBraces` (a default rule): when a
+# condition / signature / type header wraps onto multiple lines, the opening brace
+# goes on its own line. These flags stop `opening_brace` from fighting that style.
+opening_brace:
+  ignore_multiline_statement_conditions: true
+  ignore_multiline_function_signatures: true
+  ignore_multiline_type_headers: true
+
+# Defer to SwiftFormat's `trailingCommas` (a default rule): it appends a trailing
+# comma to the last element of multiline collection literals. `mandatory_comma`
+# flips SwiftLint to require the same instead of forbidding it.
+trailing_comma:
+  mandatory_comma: true
+
+# These are whole-scope size/complexity metrics, so the SwiftSyntax macro file can only
+# opt out of them with a file-wide `swiftlint:disable` — allow that without warning.
+blanket_disable_command:
+  always_blanket_disable:
+    - cyclomatic_complexity
+    - function_body_length
+    - type_body_length

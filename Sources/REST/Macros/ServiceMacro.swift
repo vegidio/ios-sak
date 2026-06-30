@@ -1,3 +1,7 @@
+// SwiftSyntax macro-expansion code is inherently long and branchy (one path per HTTP method,
+// parameter marker, and annotation), so the length/complexity metrics are relaxed for this file.
+// swiftlint:disable cyclomatic_complexity function_body_length file_length type_body_length
+
 import Foundation
 import SwiftBasicFormat
 import SwiftDiagnostics
@@ -35,9 +39,8 @@ public enum ServiceMacro: PeerMacro {
             context.diagnose(.error("@Service cannot combine @Retry and @NoRetry", at: protocolDecl))
             return []
         }
-        let retryCallArg // in the RESTClient(...) call
-            = if serviceNoRetry
-        {
+        // The `retryPolicy:` argument baked into the RESTClient(...) call.
+        let retryCallArg = if serviceNoRetry {
             "retryPolicy: nil,\n"
         } else if let serviceRetry {
             "retryPolicy: RetryPolicy(\(serviceRetry)),\n"
@@ -193,11 +196,11 @@ public enum ServiceMacro: PeerMacro {
         }
 
         // Signature
-        let signatureParams = params.map { p -> String in
-            if p.label == p.name {
-                return "\(p.name): \(p.innerType)"
+        let signatureParams = params.map { param -> String in
+            if param.label == param.name {
+                return "\(param.name): \(param.innerType)"
             } else {
-                return "\(p.label) \(p.name): \(p.innerType)"
+                return "\(param.label) \(param.name): \(param.innerType)"
             }
         }.joined(separator: ", ")
 
@@ -259,7 +262,8 @@ public enum ServiceMacro: PeerMacro {
         // (the macro plugin can't import the REST module); keep the two in sync.
         if methodRetry != nil, !["get", "put", "delete"].contains(httpMethod) {
             context.diagnose(.error(
-                "@Retry only affects idempotent methods (GET/PUT/DELETE); '\(funcName)' is a \(httpMethod.uppercased()) request",
+                "@Retry only affects idempotent methods (GET/PUT/DELETE); '\(funcName)' is a "
+                    + "\(httpMethod.uppercased()) request",
                 at: funcDecl
             ))
             return nil
