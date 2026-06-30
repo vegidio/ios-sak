@@ -65,8 +65,8 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
         var request = urlRequest
 
         // If skipAuth sentinel is present, strip it and skip all auth logic
-        if request.value(forHTTPHeaderField: "X-Skip-Auth") == "1" {
-            request.setValue(nil, forHTTPHeaderField: "X-Skip-Auth")
+        if request.value(forHTTPHeaderField: AuthSentinel.header) == AuthSentinel.value {
+            request.setValue(nil, forHTTPHeaderField: AuthSentinel.header)
             for (key, value) in configuration.defaultHeaders where request.value(forHTTPHeaderField: key) == nil {
                 request.setValue(value, forHTTPHeaderField: key)
             }
@@ -150,7 +150,14 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
             return
         }
 
-        // Retry other failures (network errors, server errors, etc.)
+        // Retry other failures (network errors, server errors, etc.), but only for idempotent
+        // methods. Retrying POST/PATCH after a transport failure risks duplicating a side effect
+        // (e.g. a payment the server already processed before the response was lost).
+        let method = request.request?.httpMethod.flatMap(HTTPMethod.init(rawValue:))
+        guard let method, HTTPMethod.idempotentMethods.contains(method) else {
+            completion(.doNotRetryWithError(error))
+            return
+        }
         completion(.retryWithDelay(retryPolicy.delay))
     }
 }

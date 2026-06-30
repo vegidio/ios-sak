@@ -2,6 +2,10 @@ import Foundation
 
 /// Extracts the expiry date from a JWT token's payload `exp` claim.
 ///
+/// - Important: This only base64url-decodes and reads the payload — it does **not** verify the
+///   token's signature. Use the result solely for expiry-driven refresh scheduling; never treat a
+///   decoded value as proof of authenticity for an authorization decision.
+///
 /// Usage:
 /// ```swift
 /// if let expiry = jwtExpiryDate(from: accessToken) {

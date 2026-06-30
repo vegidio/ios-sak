@@ -62,12 +62,16 @@ public actor RESTClient {
         var request = request
         request.url = Self.resolveURL(request.url, baseURL: configuration.baseURL)
 
-        let cacheKey = cacheable ? ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters) : nil
+        // Only GET responses are cached. Caching non-GET requests is unsafe here because the cache
+        // key is derived from URL + query parameters only (it ignores the HTTP method and body), so
+        // mutating requests could return stale entries or collide on differing bodies.
+        let isCacheable = cacheable && request.method == .get
+        let cacheKey = isCacheable ? ResponseCache.makeKey(url: request.url, queryParams: request.queryParameters) : nil
 
         // Return cached response if available and not expired
-        if cacheable, let cacheKey {
+        if isCacheable, let cacheKey {
             if let entry = await cache.retrieve(forKey: cacheKey) {
-                let body = try decodeOrThrow(T.self, from: entry.data)
+                let body = try decodeBody(T.self, from: entry.data)
                 return RESTResponse(body: body, urlResponse: entry.httpResponse)
             }
         }
@@ -79,10 +83,13 @@ public actor RESTClient {
             throw RESTError.invalidURL
         }
 
-        // Use Alamofire but manage validation manually to capture raw Data on errors
+        // Use Alamofire but manage validation manually to capture raw Data on errors. Empty bodies
+        // are allowed for every status code so a no-content success (e.g. 204) is not treated as a
+        // serialization failure; the raw `response.data` is still captured for error reporting, and
+        // empty success bodies resolve to `EmptyResponse` in `decodeBody`.
         let dataTask = session.request(urlRequest)
             .validate()
-            .serializingData(emptyResponseCodes: [])
+            .serializingData(emptyResponseCodes: Set(100...599))
         let response = await dataTask.response
 
         // Surface network-level errors
@@ -100,10 +107,10 @@ public actor RESTClient {
             throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        let body = try decodeOrThrow(T.self, from: data)
+        let body = try decodeBody(T.self, from: data)
 
         // Store successful response in cache
-        if cacheable, let cacheKey {
+        if isCacheable, let cacheKey {
             await cache.store(data, httpResponse: httpResponse, forKey: cacheKey, ttl: ttl)
         }
 
@@ -127,7 +134,12 @@ public actor RESTClient {
         return "\(trimmedBase)/\(trimmedPath)"
     }
 
-    private func decodeOrThrow<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    /// Decodes the response body as `T`, short-circuiting empty bodies (e.g. 204/205 No Content)
+    /// to `EmptyResponse` so no-body endpoints don't fail the JSON decoder on empty input.
+    private func decodeBody<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        if data.isEmpty, let empty = EmptyResponse() as? T {
+            return empty
+        }
         do {
             return try decoder.decode(type, from: data)
         } catch {

@@ -712,4 +712,119 @@ final class ServiceMacroTests: XCTestCase {
             macros: macros
         )
     }
+
+    func testVoidMethodIsDiscardableEmptyResponse() {
+        assertMacroExpansion(
+            """
+            @Service
+            protocol UserService {
+                @Delete("users/{id}")
+                func deleteUser(id: Path<Int>) async throws
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func deleteUser(id: Path<Int>) async throws
+            }
+
+            struct UserServiceClient {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+                @discardableResult
+                func deleteUser(id: Int) async throws -> RESTResponse<EmptyResponse> {
+                    let request = RESTRequest(
+                        url: "users/\\(id)",
+                        method: .delete
+                    )
+                    return try await client.send(request)
+                }
+            }
+            """,
+            macros: macros
+        )
+    }
+
+    func testCacheableOnNonGetMethodEmitsDiagnostic() {
+        assertMacroExpansion(
+            """
+            @Service
+            protocol UserService {
+                @Post("users")
+                @Cacheable(ttl: 60)
+                func createUser(user: Body<NewUser>) async throws -> User
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func createUser(user: Body<NewUser>) async throws -> User
+            }
+
+            struct UserServiceClient {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "@Cacheable is only valid on GET methods; 'createUser' is a POST request",
+                    line: 3,
+                    column: 5
+                )
+            ],
+            macros: macros
+        )
+    }
 }

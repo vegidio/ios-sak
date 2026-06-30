@@ -41,6 +41,30 @@ private protocol CachedService {
     @Get("health")
     @NoCache
     func health() async throws -> [String: String]
+
+    // Service-wide @Cacheable applies here too, but the engine only caches GET — so two POSTs
+    // must both reach the network (see `cacheableNeverCachesNonGet`).
+    @Post("users")
+    func createUser(user: Body<NewUser>) async throws -> User
+}
+
+// For retry-idempotency tests.
+@Service
+private protocol RetryService {
+    @Get("flaky")
+    func flakyGet() async throws -> [String: String]
+
+    @Post("submit")
+    func submit(payload: Body<NewUser>) async throws -> [String: String]
+}
+
+// For empty-body (204 No Content) tests. No return type — the generated method is
+// @discardableResult and returns RESTResponse<EmptyResponse>, so callers can ignore it or read
+// the response metadata.
+@Service
+private protocol EmptyBodyService {
+    @Delete("users/{id}")
+    func deleteUser(id: Path<Int>) async throws
 }
 
 @Suite("@Service generated client", .serialized)
@@ -69,6 +93,23 @@ struct ServiceIntegrationTests {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [StubURLProtocol.self]
         return CachedServiceClient(baseURL: baseURL, sessionConfiguration: sessionConfig)
+    }
+
+    private func makeRetryService(baseURL: String) -> RetryServiceClient {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubURLProtocol.self]
+        // delay 0 keeps the test fast; maxAttempts 2 → one initial try + two retries = 3 requests.
+        return RetryServiceClient(
+            baseURL: baseURL,
+            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
+            sessionConfiguration: sessionConfig
+        )
+    }
+
+    private func makeEmptyBodyService(baseURL: String) -> EmptyBodyServiceClient {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [StubURLProtocol.self]
+        return EmptyBodyServiceClient(baseURL: baseURL, sessionConfiguration: sessionConfig)
     }
 
     @Test("GET with a Path parameter hits the substituted URL")
@@ -161,6 +202,75 @@ struct ServiceIntegrationTests {
         _ = try await service.health()
 
         #expect(StubURLProtocol.requestCount == 2)
+    }
+
+    @Test("caching never applies to non-GET requests even under a service-wide @Cacheable")
+    func cacheableNeverCachesNonGet() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 9, name: "Carol"))) }
+
+        let service = makeCachedService(baseURL: "https://api.example.com")
+        _ = try await service.createUser(user: NewUser(name: "Carol"))
+        _ = try await service.createUser(user: NewUser(name: "Carol"))
+
+        // Both POSTs must reach the network — a non-GET response is never served from cache.
+        #expect(StubURLProtocol.requestCount == 2)
+    }
+
+    // MARK: - Retry idempotency
+
+    @Test("a failing GET is retried up to the retry policy limit")
+    func failingGetIsRetried() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (500, Data()) }
+
+        let service = makeRetryService(baseURL: "https://api.example.com")
+        await #expect(throws: RESTError.self) {
+            _ = try await service.flakyGet()
+        }
+
+        // initial attempt + 2 retries (maxAttempts: 2)
+        #expect(StubURLProtocol.requestCount == 3)
+    }
+
+    @Test("a failing POST is not retried (non-idempotent)")
+    func failingPostIsNotRetried() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (500, Data()) }
+
+        let service = makeRetryService(baseURL: "https://api.example.com")
+        await #expect(throws: RESTError.self) {
+            _ = try await service.submit(payload: NewUser(name: "Eve"))
+        }
+
+        // Exactly one request — POST must not be retried on a server/network failure.
+        #expect(StubURLProtocol.requestCount == 1)
+    }
+
+    // MARK: - Empty body
+
+    @Test("a void method exposes the 204 response metadata with an empty body")
+    func voidMethodExposesResponseMetadata() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (204, Data()) }
+
+        let service = makeEmptyBodyService(baseURL: "https://api.example.com")
+        let response = try await service.deleteUser(id: 7)
+
+        #expect(StubURLProtocol.captured?.method == "DELETE")
+        #expect(response.statusCode == 204)
+        _ = response.body as EmptyResponse
+    }
+
+    @Test("a void method can be called as a discardable statement")
+    func voidMethodIsDiscardable() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (204, Data()) }
+
+        let service = makeEmptyBodyService(baseURL: "https://api.example.com")
+        try await service.deleteUser(id: 7)
+
+        #expect(StubURLProtocol.requestCount == 1)
     }
 }
 

@@ -16,35 +16,35 @@ public struct RetryPolicy: Sendable {
 struct RESTConfiguration: Sendable {
     /// Base URL prepended to relative request paths (e.g. those produced by `@Service`).
     /// Requests whose URL is already absolute (`http`/`https`) are used as-is. `nil` disables it.
-    public var baseURL: String?
+    var baseURL: String?
 
     /// Headers added to every outgoing request. Per-request headers override these.
-    public var defaultHeaders: [String: String]
+    var defaultHeaders: [String: String]
 
     /// Retry policy applied to all failed requests. Set to `nil` to disable retry.
-    public var retryPolicy: RetryPolicy?
+    var retryPolicy: RetryPolicy?
 
     /// Returns the current access token expiry date, or `nil` if not applicable.
-    public var tokenExpiryDate: (@Sendable () -> Date?)?
+    var tokenExpiryDate: (@Sendable () -> Date?)?
 
     /// How many seconds before expiry to proactively refresh the token.
-    public var preemptiveRefreshLeadTime: TimeInterval
+    var preemptiveRefreshLeadTime: TimeInterval
 
     /// Returns `true` when a response indicates an authentication failure (e.g. 401).
-    public var isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)?
+    var isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)?
 
     /// Performs the token refresh and returns the new access token string.
-    public var refreshToken: (@Sendable () async throws -> String)?
+    var refreshToken: (@Sendable () async throws -> String)?
 
     /// Applies the access token to an outgoing `URLRequest` (e.g. sets the Authorization header).
-    public var applyToken: (@Sendable (String, inout URLRequest) -> Void)?
+    var applyToken: (@Sendable (String, inout URLRequest) -> Void)?
 
     /// Returns the current stored access token, or `nil` if none is available.
     /// Used to seed the token coordinator on the first request after sign-in,
     /// avoiding an unnecessary 401 round-trip.
-    public var getToken: (@Sendable () -> String?)?
+    var getToken: (@Sendable () -> String?)?
 
-    public init(
+    init(
         baseURL: String? = nil,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),

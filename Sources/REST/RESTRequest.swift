@@ -6,6 +6,18 @@ public enum HTTPMethod: String, Sendable {
     case put = "PUT"
     case patch = "PATCH"
     case delete = "DELETE"
+
+    /// Methods safe to retry after a transport/server failure without risking a duplicated side
+    /// effect (per RFC 7231 idempotency). Used by `APIInterceptor` to gate automatic retries.
+    static let idempotentMethods: Set<HTTPMethod> = [.get, .put, .delete]
+}
+
+/// Internal sentinel used to flag a request that should bypass automatic token injection.
+/// `RESTRequest.buildURLRequest` sets the header; `APIInterceptor.adapt` reads and strips it.
+/// Centralized here so the request builder and the interceptor can never drift apart.
+enum AuthSentinel {
+    static let header = "X-Skip-Auth"
+    static let value = "1"
 }
 
 public struct RESTRequest: Sendable {
@@ -54,7 +66,7 @@ public struct RESTRequest: Sendable {
         }
 
         if skipAuth {
-            request.setValue("1", forHTTPHeaderField: "X-Skip-Auth")
+            request.setValue(AuthSentinel.value, forHTTPHeaderField: AuthSentinel.header)
         }
 
         return request

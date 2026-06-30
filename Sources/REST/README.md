@@ -36,6 +36,15 @@ let created = try await service.createUser(user: NewUser(name: "Bob")).body
 
 The macro emits a standalone `struct UserServiceClient` that builds each `RESTRequest` and runs it for you. Every method must be `async throws` and declare its decoded body type `T` directly (e.g. `-> User`); the generated client method returns `RESTResponse<T>`, so call sites use `.body`, `.statusCode`, etc. on the result.
 
+For endpoints with no response body (e.g. a `DELETE` returning `204 No Content`), **omit the return type**:
+
+```swift
+@Delete("users/{id}")
+func deleteUser(id: Path<Int>) async throws
+```
+
+The generated method is `@discardableResult` and returns `RESTResponse<EmptyResponse>`, so you can ignore the result (`try await service.deleteUser(id: 7)`) or capture it to read `.statusCode`/`.headers` — only the `body` is the empty placeholder.
+
 ## Annotations
 
 | Annotation | Applies to | Effect |

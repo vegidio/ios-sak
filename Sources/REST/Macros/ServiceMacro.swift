@@ -112,21 +112,23 @@ public enum ServiceMacro: PeerMacro {
             context.diagnose(.error("'\(funcName)' must be declared 'async throws'", at: funcDecl))
             return nil
         }
-        guard let writtenReturn = funcDecl.signature.returnClause?.type.trimmedDescription else {
-            context.diagnose(.error("'\(funcName)' must declare a return type", at: funcDecl))
-            return nil
-        }
+        // A method may omit its return type (or write `-> Void`/`-> ()`) to declare a no-body
+        // endpoint. The generated method then returns `RESTResponse<EmptyResponse>` and is marked
+        // `@discardableResult`, so callers can ignore it or still read `.statusCode`/`.headers`.
+        let writtenReturn = funcDecl.signature.returnClause?.type.trimmedDescription
+        let isVoid = writtenReturn == nil || writtenReturn == "Void" || writtenReturn == "()"
+
         // The method declares the decoded body type directly (e.g. `User`); the generated client
         // wraps it in `RESTResponse<…>`. Writing the wrapper explicitly is rejected to keep the
         // service definition uniform and avoid `RESTResponse<RESTResponse<…>>`.
-        guard !writtenReturn.hasPrefix("RESTResponse<") else {
+        if let writtenReturn, writtenReturn.hasPrefix("RESTResponse<") {
             context.diagnose(.error(
                 "'\(funcName)' must declare the response body type directly (e.g. 'User'), not 'RESTResponse<…>'",
                 at: funcDecl
             ))
             return nil
         }
-        let returnType = "RESTResponse<\(writtenReturn)>"
+        let returnType = isVoid ? "RESTResponse<EmptyResponse>" : "RESTResponse<\(writtenReturn!)>"
 
         // Parameters
         var params: [ParsedParam] = []
@@ -214,13 +216,24 @@ public enum ServiceMacro: PeerMacro {
             ))
             return nil
         }
+        // Caching is GET-only at the engine level, so an explicit method-level @Cacheable on a
+        // non-GET method has no effect — reject it at compile time. (A service-wide @Cacheable is
+        // allowed: it applies to every method but only actually caches the GETs.)
+        if methodCache != nil, httpMethod != "get" {
+            context.diagnose(.error(
+                "@Cacheable is only valid on GET methods; '\(funcName)' is a \(httpMethod.uppercased()) request",
+                at: funcDecl
+            ))
+            return nil
+        }
         let effectiveCache = hasMarker("NoCache", in: funcDecl) ? nil : (methodCache ?? serviceCache)
         let sendCall = effectiveCache
             .map { "client.send(request, cacheable: true, ttl: \($0.ttl ?? "nil"))" }
             ?? "client.send(request)"
 
+        let discardable = isVoid ? "@discardableResult\n" : ""
         return """
-        \(access)func \(funcName)(\(signatureParams)) async throws -> \(returnType) {
+        \(discardable)\(access)func \(funcName)(\(signatureParams)) async throws -> \(returnType) {
         let request = \(requestExpr)
         return try await \(sendCall)
         }
