@@ -76,11 +76,11 @@ public struct RESTRequest: Sendable {
 public extension RESTRequest {
     /// Creates a request with an `Encodable` body, automatically JSON-encoding it
     /// and setting `Content-Type: application/json` unless already provided.
-    init<B: Encodable>(
+    init(
         url: String,
         method: HTTPMethod = .post,
         headers: [String: String] = [:],
-        body encodable: B,
+        body encodable: some Encodable,
         encoder: JSONEncoder = JSONEncoder(),
         queryParameters: [String: String] = [:],
         skipAuth: Bool = false

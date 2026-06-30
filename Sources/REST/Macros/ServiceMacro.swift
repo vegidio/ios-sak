@@ -35,13 +35,14 @@ public enum ServiceMacro: PeerMacro {
             context.diagnose(.error("@Service cannot combine @Retry and @NoRetry", at: protocolDecl))
             return []
         }
-        let retryCallArg: String     // in the RESTClient(...) call
-        if serviceNoRetry {
-            retryCallArg = "retryPolicy: nil,\n"
+        let retryCallArg // in the RESTClient(...) call
+            = if serviceNoRetry
+        {
+            "retryPolicy: nil,\n"
         } else if let serviceRetry {
-            retryCallArg = "retryPolicy: RetryPolicy(\(serviceRetry)),\n"
+            "retryPolicy: RetryPolicy(\(serviceRetry)),\n"
         } else {
-            retryCallArg = "retryPolicy: RetryPolicy(),\n"
+            "retryPolicy: RetryPolicy(),\n"
         }
 
         var methods: [String] = []
@@ -99,9 +100,9 @@ public enum ServiceMacro: PeerMacro {
     private enum ParamKind { case path, query, body, header }
 
     private struct ParsedParam {
-        let label: String          // external argument label as written (may be "_")
-        let name: String           // internal name used in the body / as wire key
-        let innerType: String      // type with the marker unwrapped
+        let label: String // external argument label as written (may be "_")
+        let name: String // internal name used in the body / as wire key
+        let innerType: String // type with the marker unwrapped
         let kind: ParamKind
     }
 
@@ -168,7 +169,7 @@ public enum ServiceMacro: PeerMacro {
         }
 
         // Validate path placeholders against Path params
-        let placeholders = self.placeholders(in: path)
+        let placeholders = placeholders(in: path)
         let pathParamNames = Set(params.filter { $0.kind == .path }.map(\.name))
         for placeholder in placeholders.subtracting(pathParamNames) {
             context.diagnose(.error(
@@ -440,8 +441,8 @@ private struct RESTMacroDiagnostic: DiagnosticMessage {
 
     init(_ message: String) {
         self.message = message
-        self.diagnosticID = MessageID(domain: "RESTMacros", id: "ServiceMacro")
-        self.severity = .error
+        diagnosticID = MessageID(domain: "RESTMacros", id: "ServiceMacro")
+        severity = .error
     }
 }
 

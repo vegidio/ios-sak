@@ -27,14 +27,18 @@ let package = Package(
             ],
             path: "Sources/REST/Macros"
         ),
+
         .target(
             name: "REST",
             dependencies: ["Alamofire", "RESTMacros"],
             path: "Sources/REST",
             exclude: ["Macros", "README.md"]
         ),
+
         .target(name: "Components", path: "Sources/Components"),
+
         .testTarget(name: "RESTTests", dependencies: ["REST"], path: "Tests/RESTTests"),
+
         .testTarget(
             name: "RESTMacrosTests",
             dependencies: [
@@ -43,7 +47,9 @@ let package = Package(
             ],
             path: "Tests/RESTMacrosTests"
         ),
+
         .testTarget(
-            name: "ComponentsTests", dependencies: ["Components"], path: "Tests/ComponentsTests"),
+            name: "ComponentsTests", dependencies: ["Components"], path: "Tests/ComponentsTests"
+        ),
     ]
 )

@@ -1,5 +1,5 @@
-import Testing
 @testable import REST
+import Testing
 
 @Suite("RESTRequest")
 struct RESTRequestTests {

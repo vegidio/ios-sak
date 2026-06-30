@@ -11,9 +11,9 @@ protocol NoOpPeerMacro: PeerMacro {}
 
 extension NoOpPeerMacro {
     static func expansion(
-        of node: AttributeSyntax,
-        providingPeersOf declaration: some DeclSyntaxProtocol,
-        in context: some MacroExpansionContext
+        of _: AttributeSyntax,
+        providingPeersOf _: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
         []
     }

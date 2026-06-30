@@ -1,5 +1,5 @@
-import Foundation
 import Alamofire
+import Foundation
 
 /// A sink that receives one formatted, multi-line log entry per request and per response.
 ///
@@ -39,7 +39,7 @@ enum RequestLogger {
     /// Builds the response log block from Alamofire's parsed response. Emits a single
     /// `<-- HTTP FAILED: …` line when the request failed before producing an HTTP response.
     /// Generic over the serializer's `Value` (we only read the response, raw data, metrics and error).
-    static func formatResponse<Value>(_ response: DataResponse<Value, AFError>) -> String {
+    static func formatResponse(_ response: DataResponse<some Any, AFError>) -> String {
         guard let http = response.response else {
             let message = response.error?.localizedDescription ?? "unknown error"
             return "<-- HTTP FAILED: \(message)"
@@ -93,12 +93,12 @@ final class LoggingEventMonitor: EventMonitor, @unchecked Sendable {
     }
 
     /// Fires with the adapted request (Authorization header injected), once per retry attempt.
-    func request(_ request: Request, didCreateURLRequest urlRequest: URLRequest) {
+    func request(_: Request, didCreateURLRequest urlRequest: URLRequest) {
         logging(RequestLogger.formatRequest(urlRequest))
     }
 
     /// Fires once when the response serializer parses the final response.
-    func request<Value>(_ request: DataRequest, didParseResponse response: DataResponse<Value, AFError>) {
+    func request(_: DataRequest, didParseResponse response: DataResponse<some Any, AFError>) {
         logging(RequestLogger.formatResponse(response))
     }
 }

@@ -64,7 +64,10 @@ public macro SkipAuth() = #externalMacro(module: "RESTMacros", type: "SkipAuthMa
 ///   - maxEntries: Maximum number of responses kept in the shared in-memory store. Only honored on
 ///     the `@Service` protocol; specifying it on a method is an error.
 @attached(peer)
-public macro Cacheable(ttl: TimeInterval? = nil, maxEntries: Int? = nil) = #externalMacro(module: "RESTMacros", type: "CacheableMacro")
+public macro Cacheable(ttl: TimeInterval? = nil, maxEntries: Int? = nil) = #externalMacro(
+    module: "RESTMacros",
+    type: "CacheableMacro"
+)
 
 /// Opts a method out of caching when the `@Service` protocol enables it with `@Cacheable`.
 @attached(peer)
@@ -80,7 +83,10 @@ public macro NoCache() = #externalMacro(module: "RESTMacros", type: "NoCacheMacr
 ///   - maxAttempts: Maximum number of attempts (including the first) before giving up.
 ///   - delay: Seconds to wait between attempts.
 @attached(peer)
-public macro Retry(maxAttempts: Int = 3, delay: TimeInterval = 1.0) = #externalMacro(module: "RESTMacros", type: "RetryMacro")
+public macro Retry(maxAttempts: Int = 3, delay: TimeInterval = 1.0) = #externalMacro(
+    module: "RESTMacros",
+    type: "RetryMacro"
+)
 
 /// Disables automatic retry for a single method, regardless of the client-wide `retryPolicy`.
 @attached(peer)

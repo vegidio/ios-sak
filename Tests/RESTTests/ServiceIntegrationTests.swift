@@ -1,15 +1,15 @@
-import Testing
 import Foundation
 @testable import REST
+import Testing
 
 // MARK: - Models
 
-private struct User: Codable, Sendable, Equatable {
+private struct User: Codable, Equatable {
     let id: Int
     let name: String
 }
 
-private struct NewUser: Encodable, Sendable {
+private struct NewUser: Encodable {
     let name: String
 }
 
@@ -34,7 +34,7 @@ private protocol UserService {
     func config() async throws -> [String: String]
 }
 
-// Service-wide caching, with one method opting out via @NoCache.
+/// Service-wide caching, with one method opting out via @NoCache.
 @Service
 @Cacheable(ttl: 300)
 private protocol CachedService {
@@ -45,14 +45,14 @@ private protocol CachedService {
     @NoCache
     func health() async throws -> [String: String]
 
-    // Service-wide @Cacheable applies here too, but the engine only caches GET — so two POSTs
-    // must both reach the network (see `cacheableNeverCachesNonGet`).
+    /// Service-wide @Cacheable applies here too, but the engine only caches GET — so two POSTs
+    /// must both reach the network (see `cacheableNeverCachesNonGet`).
     @Post("users")
     func createUser(user: Body<NewUser>) async throws -> User
 }
 
-// For retry-idempotency tests. Client-wide policy set via the protocol-level @Retry; delay 0 keeps
-// the test fast, maxAttempts 2 → one initial try + two retries = 3 requests.
+/// For retry-idempotency tests. Client-wide policy set via the protocol-level @Retry; delay 0 keeps
+/// the test fast, maxAttempts 2 → one initial try + two retries = 3 requests.
 @Service
 @Retry(maxAttempts: 2, delay: 0)
 private protocol RetryService {
@@ -62,12 +62,12 @@ private protocol RetryService {
     @Post("submit")
     func submit(payload: Body<NewUser>) async throws -> [String: String]
 
-    // Overrides the client-wide policy with a larger attempt budget.
+    /// Overrides the client-wide policy with a larger attempt budget.
     @Get("flaky")
     @Retry(maxAttempts: 4, delay: 0)
     func overrideGet() async throws -> [String: String]
 
-    // Opts out of retry entirely despite the client-wide policy.
+    /// Opts out of retry entirely despite the client-wide policy.
     @Get("flaky")
     @NoRetry
     func noRetryGet() async throws -> [String: String]
@@ -82,9 +82,9 @@ private protocol ProtocolRetryService {
     func flakyGet() async throws -> [String: String]
 }
 
-// For empty-body (204 No Content) tests. No return type — the generated method is
-// @discardableResult and returns RESTResponse<EmptyResponse>, so callers can ignore it or read
-// the response metadata.
+/// For empty-body (204 No Content) tests. No return type — the generated method is
+/// @discardableResult and returns RESTResponse<EmptyResponse>, so callers can ignore it or read
+/// the response metadata.
 @Service
 private protocol EmptyBodyService {
     @Delete("users/{id}")
@@ -93,7 +93,6 @@ private protocol EmptyBodyService {
 
 @Suite("@Service generated client", .serialized)
 struct ServiceIntegrationTests {
-
     private func makeService(baseURL: String, withAuth: Bool = false) -> UserServiceClient {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [StubURLProtocol.self]
@@ -274,7 +273,7 @@ struct ServiceIntegrationTests {
     @Test("@Retry overrides the client-wide policy with a larger attempt budget")
     func methodRetryOverrideUsesLargerBudget() async throws {
         StubURLProtocol.reset()
-        StubURLProtocol.respond { _ in (500, Data()) }   // never recovers
+        StubURLProtocol.respond { _ in (500, Data()) } // never recovers
 
         let service = makeRetryService(baseURL: "https://api.example.com")
         await #expect(throws: RESTError.self) {
@@ -446,7 +445,7 @@ struct ServiceIntegrationTests {
     @Test("a persistently-401 endpoint refreshes and retries exactly once, then fails")
     func authRefreshRetriesOnce() async throws {
         StubURLProtocol.reset()
-        StubURLProtocol.respond { _ in (401, Data()) }   // never recovers
+        StubURLProtocol.respond { _ in (401, Data()) } // never recovers
 
         let refreshCount = Counter()
         let service = UserServiceClient(
@@ -483,10 +482,10 @@ struct ServiceIntegrationTests {
         // The response block is emitted on Alamofire's monitor queue, which may settle slightly
         // after `send` returns — poll briefly until the closing response marker arrives.
         var combined = ""
-        for _ in 0..<100 {
+        for _ in 0 ..< 100 {
             combined = logs.all.joined(separator: "\n")
             if combined.contains("<-- END HTTP") { break }
-            try await Task.sleep(nanoseconds: 10_000_000)  // 10ms
+            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
 
         // Request block: includes the injected Authorization header.
@@ -512,14 +511,21 @@ private func stubSessionConfig() -> URLSessionConfiguration {
 /// Mutable token source for the live-read test (stands in for a reactive store).
 private actor TokenBox {
     private var token: String?
-    func set(_ value: String?) { token = value }
-    func get() -> String? { token }
+    func set(_ value: String?) {
+        token = value
+    }
+
+    func get() -> String? {
+        token
+    }
 }
 
 /// Counts how many times the refresher closure runs.
 private actor Counter {
     private(set) var value = 0
-    func increment() { value += 1 }
+    func increment() {
+        value += 1
+    }
 }
 
 /// Thread-safe sink for `logging` output. The closure may be invoked from Alamofire's monitor
@@ -527,8 +533,13 @@ private actor Counter {
 private final class LogCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String] = []
-    func append(_ message: String) { lock.lock(); entries.append(message); lock.unlock() }
-    var all: [String] { lock.lock(); defer { lock.unlock() }; return entries }
+    func append(_ message: String) {
+        lock.lock(); entries.append(message); lock.unlock()
+    }
+
+    var all: [String] {
+        lock.lock(); defer { lock.unlock() }; return entries
+    }
 }
 
 // MARK: - URLProtocol stub
@@ -536,7 +547,7 @@ private final class LogCollector: @unchecked Sendable {
 /// Synchronous `URLProtocol` stub. The suite is `.serialized`, so the static state is only
 /// touched by one test at a time. The observed request is captured for post-call assertions.
 private final class StubURLProtocol: URLProtocol {
-    struct Captured: Sendable {
+    struct Captured {
         let url: String?
         let method: String?
         let headers: [String: String]
@@ -545,9 +556,9 @@ private final class StubURLProtocol: URLProtocol {
 
     typealias Responder = @Sendable (URLRequest) -> (status: Int, body: Data)
 
-    nonisolated(unsafe) private static var responder: Responder?
-    nonisolated(unsafe) private static var capturedBox: Captured?
-    nonisolated(unsafe) private static var requestCountBox = 0
+    private nonisolated(unsafe) static var responder: Responder?
+    private nonisolated(unsafe) static var capturedBox: Captured?
+    private nonisolated(unsafe) static var requestCountBox = 0
     private static let lock = NSLock()
 
     static func reset() {
@@ -572,11 +583,16 @@ private final class StubURLProtocol: URLProtocol {
         return capturedBox
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
-        let request = self.request
+        let request = request
         let captured = Captured(
             url: request.url?.absoluteString,
             method: request.httpMethod,

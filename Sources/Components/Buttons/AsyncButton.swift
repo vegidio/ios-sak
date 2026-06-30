@@ -38,8 +38,8 @@ public struct AsyncButton<Label: View>: View {
     }
 }
 
-extension AsyncButton where Label == Text {
-    public init(_ title: String, action: @escaping () async throws -> Void) {
+public extension AsyncButton where Label == Text {
+    init(_ title: String, action: @escaping () async throws -> Void) {
         self.init(action: action) { Text(title) }
     }
 }

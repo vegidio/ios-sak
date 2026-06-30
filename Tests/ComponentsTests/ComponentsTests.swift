@@ -1,5 +1,5 @@
-import Testing
 @testable import Components
+import Testing
 
 @Suite("Components")
 struct ComponentsTests {

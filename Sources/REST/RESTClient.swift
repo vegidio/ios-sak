@@ -1,5 +1,5 @@
-import Foundation
 import Alamofire
+import Foundation
 
 /// The HTTP engine built on Alamofire that powers `@Service` clients, providing automatic
 /// retry, TTL-based response caching, default headers, and token refresh workflows.
@@ -15,7 +15,7 @@ public actor RESTClient {
     /// Status codes for which an empty response body is allowed. Constant, so it's built once rather
     /// than per retry attempt. Empty bodies are permitted for every code so a no-content success
     /// (e.g. 204) isn't a serialization failure; empty success bodies resolve to `EmptyResponse`.
-    private static let emptyResponseCodes = Set(100...599)
+    private static let emptyResponseCodes = Set(100 ... 599)
 
     public init(
         baseURL: String,
@@ -52,9 +52,9 @@ public actor RESTClient {
             eventMonitors.append(LoggingEventMonitor(logging: logging))
         }
 
-        self.session = Session(configuration: sessionConfig, interceptor: interceptor, eventMonitors: eventMonitors)
+        session = Session(configuration: sessionConfig, interceptor: interceptor, eventMonitors: eventMonitors)
         self.configuration = configuration
-        self.cache = ResponseCache(maxEntries: maxEntries)
+        cache = ResponseCache(maxEntries: maxEntries)
         self.decoder = decoder
     }
 
@@ -100,11 +100,10 @@ public actor RESTClient {
         }
 
         // Resolve the effective retry policy: a per-request override wins over the client-wide one.
-        let retryPolicy: RetryPolicy?
-        switch retry {
-        case .inherit: retryPolicy = configuration.retryPolicy
-        case .disabled: retryPolicy = nil
-        case .override(let policy): retryPolicy = policy
+        let retryPolicy: RetryPolicy? = switch retry {
+        case .inherit: configuration.retryPolicy
+        case .disabled: nil
+        case let .override(policy): policy
         }
         let isAuthFailure = configuration.authFailurePredicate
 
@@ -128,7 +127,8 @@ public actor RESTClient {
                 if let retryPolicy,
                    attempt < retryPolicy.maxAttempts,
                    HTTPMethod.idempotentMethods.contains(request.method),
-                   !isAuth {
+                   !isAuth
+                {
                     attempt += 1
                     let nanoseconds = UInt64(max(0, retryPolicy.delay) * 1_000_000_000)
                     try? await Task.sleep(nanoseconds: nanoseconds)
@@ -143,7 +143,7 @@ public actor RESTClient {
 
             let data = response.data ?? Data()
 
-            guard (200..<300).contains(httpResponse.statusCode) else {
+            guard (200 ..< 300).contains(httpResponse.statusCode) else {
                 throw RESTError.httpError(statusCode: httpResponse.statusCode, data: data)
             }
 
@@ -192,10 +192,10 @@ public actor RESTClient {
         switch error {
         case .invalidURL:
             return .invalidURL
-        case .sessionTaskFailed(let underlying):
+        case let .sessionTaskFailed(underlying):
             return .network(underlying)
-        case .responseValidationFailed(let reason):
-            if case .unacceptableStatusCode(let code) = reason {
+        case let .responseValidationFailed(reason):
+            if case let .unacceptableStatusCode(code) = reason {
                 return .httpError(statusCode: code, data: data)
             }
             return .network(error)

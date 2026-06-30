@@ -1,9 +1,8 @@
-import Testing
 @testable import REST
+import Testing
 
 @Suite("RESTClient.resolveURL")
 struct BaseURLResolutionTests {
-
     @Test("relative path is joined to the base URL")
     func relativeJoined() {
         let resolved = RESTClient.resolveURL("users/7", baseURL: "https://api.example.com")

@@ -25,7 +25,7 @@ public enum RetryOverride: Sendable {
 
 /// Internal bundle of settings for `RESTClient`. Not part of the public API — consumers pass
 /// these settings directly to a `@Service` client's (or `RESTClient`'s) init.
-struct RESTConfiguration: Sendable {
+struct RESTConfiguration {
     /// Base URL prepended to relative request paths (e.g. those produced by `@Service`).
     /// Requests whose URL is already absolute (`http`/`https`) are used as-is. `nil` disables it.
     var baseURL: String?

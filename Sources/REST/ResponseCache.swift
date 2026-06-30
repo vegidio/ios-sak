@@ -1,18 +1,22 @@
 import Foundation
 
-struct CacheEntry: Sendable {
+struct CacheEntry {
     let data: Data
     let httpResponse: HTTPURLResponse
-    // `nil` means the entry never expires (cache kept until evicted by `maxEntries`).
+    /// `nil` means the entry never expires (cache kept until evicted by `maxEntries`).
     let expiresAt: Date?
 
-    var isExpired: Bool { expiresAt.map { Date() >= $0 } ?? false }
+    var isExpired: Bool {
+        expiresAt.map { Date() >= $0 } ?? false
+    }
 }
 
-// NSCache requires AnyObject values; this box wraps the Sendable CacheEntry.
+/// NSCache requires AnyObject values; this box wraps the Sendable CacheEntry.
 private final class CacheEntryBox: @unchecked Sendable {
     let entry: CacheEntry
-    init(_ entry: CacheEntry) { self.entry = entry }
+    init(_ entry: CacheEntry) {
+        self.entry = entry
+    }
 }
 
 actor ResponseCache {

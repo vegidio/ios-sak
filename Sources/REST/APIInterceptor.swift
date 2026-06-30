@@ -1,5 +1,5 @@
-import Foundation
 import Alamofire
+import Foundation
 
 // MARK: - TokenRefreshCoordinator
 
@@ -44,14 +44,14 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
 
     init(configuration: RESTConfiguration) {
         self.configuration = configuration
-        self.coordinator = TokenRefreshCoordinator()
+        coordinator = TokenRefreshCoordinator()
     }
 
     // MARK: RequestAdapter
 
     func adapt(
         _ urlRequest: URLRequest,
-        for session: Session,
+        for _: Session,
         completion: @escaping (Result<URLRequest, Error>) -> Void
     ) {
         var request = urlRequest
@@ -88,18 +88,18 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
                 if let expiryProvider = configuration.tokenExpiryDate,
                    let expiry = await expiryProvider(),
                    expiry.timeIntervalSinceNow < configuration.preemptiveRefreshLeadTime,
-                   let refreshHandler = configuration.tokenRefresher {
+                   let refreshHandler = configuration.tokenRefresher
+                {
                     _ = try await coordinator.refresh(using: refreshHandler)
                 }
 
                 // Resolve the token: read `tokenProvider` live on every request (reactive), or fall
                 // back to the last refreshed token in refresher-only mode. The value is written to
                 // the Authorization header verbatim — the closures own the scheme (e.g. "Bearer …").
-                let token: String?
-                if let provider = configuration.tokenProvider {
-                    token = await provider()
+                let token: String? = if let provider = configuration.tokenProvider {
+                    await provider()
                 } else {
-                    token = await coordinator.currentToken
+                    await coordinator.currentToken
                 }
 
                 if let token {
@@ -116,7 +116,7 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
 
     func retry(
         _ request: Request,
-        for session: Session,
+        for _: Session,
         dueTo error: Error,
         completion: @escaping (RetryResult) -> Void
     ) {

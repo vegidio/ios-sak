@@ -11,15 +11,15 @@ extension RESTError: Equatable {
     public static func == (lhs: RESTError, rhs: RESTError) -> Bool {
         switch (lhs, rhs) {
         case (.invalidURL, .invalidURL):
-            return true
+            true
         case (.network, .network):
-            return true
+            true
         case let (.httpError(lCode, lData), .httpError(rCode, rData)):
-            return lCode == rCode && lData == rData
+            lCode == rCode && lData == rData
         case (.decodingError, .decodingError):
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 }

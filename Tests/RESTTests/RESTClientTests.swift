@@ -1,16 +1,21 @@
-import Testing
 import Foundation
 @testable import REST
+import Testing
 
 @Suite("RESTClient")
 struct RESTClientTests {
-
     // MARK: - ResponseCache.makeKey
 
     @Test("makeKey is deterministic regardless of dictionary ordering")
     func cacheKeyIsDeterministic() {
-        let key1 = ResponseCache.makeKey(url: "https://api.example.com/users", queryParams: ["page": "1", "limit": "20"])
-        let key2 = ResponseCache.makeKey(url: "https://api.example.com/users", queryParams: ["limit": "20", "page": "1"])
+        let key1 = ResponseCache.makeKey(
+            url: "https://api.example.com/users",
+            queryParams: ["page": "1", "limit": "20"]
+        )
+        let key2 = ResponseCache.makeKey(
+            url: "https://api.example.com/users",
+            queryParams: ["limit": "20", "page": "1"]
+        )
         #expect(key1 == key2)
         #expect(key1 == "https://api.example.com/users?limit=20&page=1")
     }
@@ -24,13 +29,13 @@ struct RESTClientTests {
     // MARK: - CacheEntry expiry
 
     @Test("CacheEntry is not expired when TTL has not elapsed")
-    func cacheEntryNotExpired() {
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+    func cacheEntryNotExpired() throws {
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         let entry = CacheEntry(
             data: Data(),
             httpResponse: response,
@@ -40,13 +45,13 @@ struct RESTClientTests {
     }
 
     @Test("CacheEntry is expired when TTL has elapsed")
-    func cacheEntryExpired() {
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+    func cacheEntryExpired() throws {
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         let entry = CacheEntry(
             data: Data(),
             httpResponse: response,
@@ -58,14 +63,14 @@ struct RESTClientTests {
     // MARK: - ResponseCache
 
     @Test("ResponseCache returns stored entry before TTL expires")
-    func responseCacheHit() async {
+    func responseCacheHit() async throws {
         let cache = ResponseCache()
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         let data = "hello".data(using: .utf8)!
         await cache.store(data, httpResponse: response, forKey: "key1", ttl: 300)
         let retrieved = await cache.retrieve(forKey: "key1")
@@ -74,14 +79,14 @@ struct RESTClientTests {
     }
 
     @Test("ResponseCache returns nil after TTL expires")
-    func responseCacheMiss() async {
+    func responseCacheMiss() async throws {
         let cache = ResponseCache()
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         // Store with a negative TTL so it's immediately expired
         await cache.store(Data(), httpResponse: response, forKey: "key2", ttl: -1)
         let retrieved = await cache.retrieve(forKey: "key2")
@@ -89,14 +94,14 @@ struct RESTClientTests {
     }
 
     @Test("ResponseCache keeps an entry with no TTL indefinitely")
-    func responseCacheNoExpiry() async {
+    func responseCacheNoExpiry() async throws {
         let cache = ResponseCache()
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         // A nil TTL means the entry never expires.
         await cache.store(Data(), httpResponse: response, forKey: "key3", ttl: nil)
         let retrieved = await cache.retrieve(forKey: "key3")
@@ -105,14 +110,14 @@ struct RESTClientTests {
     }
 
     @Test("ResponseCache honors the maxEntries count limit")
-    func responseCacheMaxEntries() async {
+    func responseCacheMaxEntries() async throws {
         let cache = ResponseCache(maxEntries: 5)
-        let response = HTTPURLResponse(
-            url: URL(string: "https://example.com")!,
+        let response = try #require(HTTPURLResponse(
+            url: #require(URL(string: "https://example.com")),
             statusCode: 200,
             httpVersion: nil,
             headerFields: nil
-        )!
+        ))
         await cache.store(Data(), httpResponse: response, forKey: "limited", ttl: 300)
         let retrieved = await cache.retrieve(forKey: "limited")
         #expect(retrieved != nil)
@@ -126,7 +131,7 @@ struct RESTClientTests {
         let callCount = ActorCounter()
 
         let results = try await withThrowingTaskGroup(of: String.self) { group in
-            for _ in 0..<5 {
+            for _ in 0 ..< 5 {
                 group.addTask {
                     try await coordinator.refresh {
                         await callCount.increment()
@@ -188,7 +193,7 @@ struct RESTClientTests {
         )
         #expect(request.headers["Content-Type"] == "application/json")
         #expect(request.body != nil)
-        let decoded = try JSONDecoder().decode(Payload.self, from: request.body!)
+        let decoded = try JSONDecoder().decode(Payload.self, from: #require(request.body))
         #expect(decoded.name == "Alice")
     }
 
@@ -238,8 +243,8 @@ struct RESTClientTests {
     // MARK: - RequestLogger
 
     @Test("formatRequest renders the OkHttp request block with a synthesized Content-Length")
-    func formatRequestWithBody() {
-        var urlRequest = URLRequest(url: URL(string: "https://api.example.com/users")!)
+    func formatRequestWithBody() throws {
+        var urlRequest = try URLRequest(url: #require(URL(string: "https://api.example.com/users")))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = Data("Hi?".utf8)
@@ -257,8 +262,8 @@ struct RESTClientTests {
     }
 
     @Test("formatRequest omits the body section when there is no body")
-    func formatRequestNoBody() {
-        var urlRequest = URLRequest(url: URL(string: "https://api.example.com/users/7")!)
+    func formatRequestNoBody() throws {
+        var urlRequest = try URLRequest(url: #require(URL(string: "https://api.example.com/users/7")))
         urlRequest.httpMethod = "GET"
 
         let log = RequestLogger.formatRequest(urlRequest)
@@ -273,5 +278,7 @@ struct RESTClientTests {
 
 private actor ActorCounter {
     private(set) var value = 0
-    func increment() { value += 1 }
+    func increment() {
+        value += 1
+    }
 }

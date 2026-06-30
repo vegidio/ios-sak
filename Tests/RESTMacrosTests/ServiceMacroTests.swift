@@ -1,7 +1,7 @@
+@testable import RESTMacros
 import SwiftSyntaxMacros
 import SwiftSyntaxMacrosTestSupport
 import XCTest
-@testable import RESTMacros
 
 final class ServiceMacroTests: XCTestCase {
     private let macros: [String: any Macro.Type] = [
@@ -291,7 +291,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "'getUser' must be annotated with one of @Get, @Post, @Put, @Patch or @Delete",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -347,7 +347,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "'createUser' has more than one Body parameter",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -641,7 +641,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "maxEntries is only valid on the @Service protocol, not on a method",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -697,7 +697,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "'getUser' must declare the response body type directly (e.g. 'User'), not 'RESTResponse<…>'",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -810,7 +810,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "@Cacheable is only valid on GET methods; 'createUser' is a POST request",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -1092,7 +1092,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "@Retry only affects idempotent methods (GET/PUT/DELETE); 'createUser' is a POST request",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -1150,7 +1150,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "'listUsers' cannot combine @Retry and @NoRetry",
                     line: 3,
                     column: 5
-                )
+                ),
             ],
             macros: macros
         )
@@ -1356,7 +1356,7 @@ final class ServiceMacroTests: XCTestCase {
                     message: "@Service cannot combine @Retry and @NoRetry",
                     line: 1,
                     column: 1
-                )
+                ),
             ],
             macros: macros
         )
