@@ -74,17 +74,14 @@ struct ServiceIntegrationTests {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [StubURLProtocol.self]
 
-        var applyToken: (@Sendable (String, inout URLRequest) -> Void)?
-        var getToken: (@Sendable () -> String?)?
+        var tokenProvider: (@Sendable () async -> String?)?
         if withAuth {
-            applyToken = { token, req in req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-            getToken = { "tok123" }
+            tokenProvider = { "Bearer tok123" }
         }
 
         return UserServiceClient(
             baseURL: baseURL,
-            applyToken: applyToken,
-            getToken: getToken,
+            tokenProvider: tokenProvider,
             sessionConfiguration: sessionConfig
         )
     }
@@ -272,6 +269,139 @@ struct ServiceIntegrationTests {
 
         #expect(StubURLProtocol.requestCount == 1)
     }
+
+    // MARK: - Token provider / refresher
+
+    @Test("tokenProvider value is written to the Authorization header verbatim")
+    func providerWritesVerbatimHeader() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 1, name: "Eve"))) }
+
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            tokenProvider: { "Token raw-credential" },
+            sessionConfiguration: stubSessionConfig()
+        )
+        _ = try await service.getUser(id: 1)
+
+        // No "Bearer " is prepended — the closure owns the scheme.
+        #expect(StubURLProtocol.captured?.headers["Authorization"] == "Token raw-credential")
+    }
+
+    @Test("tokenProvider is read live on every request")
+    func providerReadLivePerRequest() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (200, try! JSONEncoder().encode(User(id: 1, name: "Eve"))) }
+
+        let box = TokenBox()
+        await box.set("Bearer A")
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            tokenProvider: { await box.get() },
+            sessionConfiguration: stubSessionConfig()
+        )
+
+        _ = try await service.getUser(id: 1)
+        #expect(StubURLProtocol.captured?.headers["Authorization"] == "Bearer A")
+
+        // Change the underlying source — the next request must reflect it without rebuilding the client.
+        await box.set("Bearer B")
+        _ = try await service.getUser(id: 1)
+        #expect(StubURLProtocol.captured?.headers["Authorization"] == "Bearer B")
+    }
+
+    @Test("refresher-only: a 401 refreshes and the retried request carries the new token")
+    func refresherOnlyAppliesRefreshedTokenOnRetry() async throws {
+        StubURLProtocol.reset()
+        // First request → 401, retried request → 200.
+        StubURLProtocol.respond { _ in
+            StubURLProtocol.requestCount == 1
+                ? (401, Data())
+                : (200, try! JSONEncoder().encode(User(id: 1, name: "Eve")))
+        }
+
+        let refreshCount = Counter()
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
+            tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
+            sessionConfiguration: stubSessionConfig()
+        )
+
+        _ = try await service.getUser(id: 1)
+
+        #expect(await refreshCount.value == 1)
+        #expect(StubURLProtocol.requestCount == 2)
+        #expect(StubURLProtocol.captured?.headers["Authorization"] == "Bearer refreshed")
+    }
+
+    @Test("a 401 triggers a refresh by default with no isUnauthorized supplied")
+    func default401TriggersRefresh() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in
+            StubURLProtocol.requestCount == 1
+                ? (401, Data())
+                : (200, try! JSONEncoder().encode(User(id: 1, name: "Eve")))
+        }
+
+        let refreshCount = Counter()
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            retryPolicy: RetryPolicy(maxAttempts: 2, delay: 0),
+            // No isUnauthorized — engine defaults to treating 401 as the auth failure.
+            tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
+            sessionConfiguration: stubSessionConfig()
+        )
+
+        _ = try await service.getUser(id: 1)
+
+        #expect(await refreshCount.value == 1)
+        #expect(StubURLProtocol.requestCount == 2)
+    }
+
+    @Test("a persistently-401 endpoint refreshes and retries exactly once, then fails")
+    func authRefreshRetriesOnce() async throws {
+        StubURLProtocol.reset()
+        StubURLProtocol.respond { _ in (401, Data()) }   // never recovers
+
+        let refreshCount = Counter()
+        let service = UserServiceClient(
+            baseURL: "https://api.example.com",
+            retryPolicy: RetryPolicy(maxAttempts: 3, delay: 0),
+            tokenRefresher: { await refreshCount.increment(); return "Bearer refreshed" },
+            sessionConfiguration: stubSessionConfig()
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await service.getUser(id: 1)
+        }
+
+        // Exactly one refresh and one retry (initial + one retry = 2 requests), despite maxAttempts 3.
+        #expect(await refreshCount.value == 1)
+        #expect(StubURLProtocol.requestCount == 2)
+    }
+}
+
+// MARK: - Test support
+
+/// A `URLProtocol`-stubbed ephemeral session configuration.
+private func stubSessionConfig() -> URLSessionConfiguration {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [StubURLProtocol.self]
+    return config
+}
+
+/// Mutable token source for the live-read test (stands in for a reactive store).
+private actor TokenBox {
+    private var token: String?
+    func set(_ value: String?) { token = value }
+    func get() -> String? { token }
+}
+
+/// Counts how many times the refresher closure runs.
+private actor Counter {
+    private(set) var value = 0
+    func increment() { value += 1 }
 }
 
 // MARK: - URLProtocol stub

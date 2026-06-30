@@ -11,7 +11,6 @@ let package = Package(
     ],
     products: [
         .library(name: "REST", targets: ["REST"]),
-        .library(name: "GraphQL", targets: ["GraphQL"]),
         .library(name: "Components", targets: ["Components"]),
     ],
     dependencies: [
@@ -34,7 +33,6 @@ let package = Package(
             path: "Sources/REST",
             exclude: ["Macros", "README.md"]
         ),
-        .target(name: "GraphQL", path: "Sources/GraphQL"),
         .target(name: "Components", path: "Sources/Components"),
         .testTarget(name: "RESTTests", dependencies: ["REST"], path: "Tests/RESTTests"),
         .testTarget(
@@ -45,7 +43,7 @@ let package = Package(
             ],
             path: "Tests/RESTMacrosTests"
         ),
-        .testTarget(name: "GraphQLTests", dependencies: ["GraphQL"], path: "Tests/GraphQLTests"),
-        .testTarget(name: "ComponentsTests", dependencies: ["Components"], path: "Tests/ComponentsTests"),
+        .testTarget(
+            name: "ComponentsTests", dependencies: ["Components"], path: "Tests/ComponentsTests"),
     ]
 )

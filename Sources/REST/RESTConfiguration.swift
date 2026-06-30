@@ -25,35 +25,35 @@ struct RESTConfiguration: Sendable {
     var retryPolicy: RetryPolicy?
 
     /// Returns the current access token expiry date, or `nil` if not applicable.
-    var tokenExpiryDate: (@Sendable () -> Date?)?
+    var tokenExpiryDate: (@Sendable () async -> Date?)?
 
     /// How many seconds before expiry to proactively refresh the token.
     var preemptiveRefreshLeadTime: TimeInterval
 
-    /// Returns `true` when a response indicates an authentication failure (e.g. 401).
+    /// Returns `true` when a response indicates an authentication failure. When `nil`, the engine
+    /// falls back to treating HTTP 401 as the auth failure that triggers a refresh.
     var isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)?
 
-    /// Performs the token refresh and returns the new access token string.
-    var refreshToken: (@Sendable () async throws -> String)?
+    /// Performs the token refresh and returns the new verbatim `Authorization` header value (the
+    /// closure owns the scheme, e.g. `"Bearer …"`). Returning the value is required: it is applied
+    /// to retry the failed request. When also using `tokenProvider`, the refresher must additionally
+    /// write the new value back (awaited) to the source `tokenProvider` reads from.
+    var tokenRefresher: (@Sendable () async throws -> String)?
 
-    /// Applies the access token to an outgoing `URLRequest` (e.g. sets the Authorization header).
-    var applyToken: (@Sendable (String, inout URLRequest) -> Void)?
-
-    /// Returns the current stored access token, or `nil` if none is available.
-    /// Used to seed the token coordinator on the first request after sign-in,
-    /// avoiding an unnecessary 401 round-trip.
-    var getToken: (@Sendable () -> String?)?
+    /// Supplies the current verbatim `Authorization` header value (scheme included), or `nil` for
+    /// none. Read on **every** request, so a token kept in a reactive store/variable is always
+    /// reflected — update the source and the next request uses the new value.
+    var tokenProvider: (@Sendable () async -> String?)?
 
     init(
         baseURL: String? = nil,
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
-        tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+        tokenExpiryDate: (@Sendable () async -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
-        refreshToken: (@Sendable () async throws -> String)? = nil,
-        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
-        getToken: (@Sendable () -> String?)? = nil
+        tokenRefresher: (@Sendable () async throws -> String)? = nil,
+        tokenProvider: (@Sendable () async -> String?)? = nil
     ) {
         self.baseURL = baseURL
         self.defaultHeaders = defaultHeaders
@@ -61,8 +61,7 @@ struct RESTConfiguration: Sendable {
         self.tokenExpiryDate = tokenExpiryDate
         self.preemptiveRefreshLeadTime = preemptiveRefreshLeadTime
         self.isUnauthorized = isUnauthorized
-        self.refreshToken = refreshToken
-        self.applyToken = applyToken
-        self.getToken = getToken
+        self.tokenRefresher = tokenRefresher
+        self.tokenProvider = tokenProvider
     }
 }

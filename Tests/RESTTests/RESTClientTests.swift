@@ -229,29 +229,10 @@ struct RESTClientTests {
         #expect(config.retryPolicy?.delay == 1.0)
     }
 
-    @Test("RESTConfiguration default getToken is nil")
-    func configurationDefaultGetToken() {
+    @Test("RESTConfiguration default tokenProvider is nil")
+    func configurationDefaultTokenProvider() {
         let config = RESTConfiguration()
-        #expect(config.getToken == nil)
-    }
-
-    // MARK: - TokenRefreshCoordinator.seed
-
-    @Test("seed sets token when coordinator has no current token")
-    func coordinatorSeedSetsToken() async {
-        let coordinator = TokenRefreshCoordinator()
-        await coordinator.seed("seeded-token")
-        let token = await coordinator.currentToken
-        #expect(token == "seeded-token")
-    }
-
-    @Test("seed does not override an existing token")
-    func coordinatorSeedDoesNotOverride() async throws {
-        let coordinator = TokenRefreshCoordinator()
-        _ = try await coordinator.refresh { "refresh-token" }
-        await coordinator.seed("seeded-token")
-        let token = await coordinator.currentToken
-        #expect(token == "refresh-token")
+        #expect(config.tokenProvider == nil)
     }
 }
 

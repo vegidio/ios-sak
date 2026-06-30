@@ -174,18 +174,22 @@ Cache entries are keyed by the resolved URL plus its query parameters, so the sa
 
 ## Authentication
 
+> In the examples below, `session` is **your own** state holder — back it with an `actor`, an
+> `@Observable` model, or whatever your app already uses. iOS-SAK doesn't define or require any
+> particular type; the closures simply read from (and write back to) the source you provide.
+
 ### Attaching a token to every request
 
-Use `applyToken` to inject the token however your API expects it (Bearer header, query parameter, etc.). Once configured, every request automatically receives the current token:
+Provide `tokenProvider` to supply the `Authorization` header value. It is read **live on every request**, so a token kept in a reactive store or variable is always reflected — update the source and the next request uses the new value. The returned string is written to the `Authorization` header **verbatim**, so the closure owns the scheme (`"Bearer …"`, `"Token …"`, or a raw credential):
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
-    applyToken: { token, request in
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
+    tokenProvider: { await session.authorizationHeader }   // e.g. "Bearer eyJ…", or nil when signed out
 )
 ```
+
+Because it runs on the hot path of every request, keep it quick and lightweight — ideally a plain in-memory read, not a network/disk/Keychain round-trip.
 
 ### Skipping auth on specific requests
 
@@ -202,45 +206,41 @@ protocol AuthService {
 
 ### Automatic token refresh on 401
 
-Provide `isUnauthorized` to detect auth failures and `refreshToken` to fetch a new token. When a request returns 401, the token is refreshed once and the original request is retried automatically. Concurrent requests that all hit 401 share a single refresh call.
+Provide `tokenRefresher` to fetch a new token. When a request fails with an auth error, the token is refreshed and the request is retried **exactly once**; a response that still fails is surfaced as the original error (the refresh endpoint is never hammered). Concurrent requests that all fail share a single refresh call.
+
+By default an HTTP **401** is treated as the auth failure that triggers a refresh. Supply `isUnauthorized` only to override that (e.g. to also treat 403 as expiry).
+
+`tokenRefresher` must **return** the new verbatim `Authorization` value — it is applied directly to the retried request. When you also use `tokenProvider`, the refresher must additionally write the new value back (awaited) to the source `tokenProvider` reads from, so the live read on the retry sees it:
 
 ```swift
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
-    isUnauthorized: { $0.statusCode == 401 },
-    refreshToken: {
-        // Refresh through a dedicated, auth-free service.
-        let response = try await authService.refresh(
-            token: RefreshToken(value: authStore.refreshToken)
-        )
-        authStore.accessToken = response.body.accessToken
-        return response.body.accessToken
+    tokenRefresher: {
+        let header = try await refreshAuthorizationHeader()   // your refresh call, e.g. via a @SkipAuth service
+        await session.update(header)                          // write-back (awaited)
+        return header
     },
-    applyToken: { token, request in
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
+    tokenProvider: { await session.authorizationHeader }
 )
 ```
+
+The write-back is race-free even with an `@Observable`/`@Published` source: mutating a Swift stored property is synchronous (only UI invalidation is deferred), so the next live read returns the new token — provided the write is awaited and the read/write share an isolation domain.
 
 ### Preemptive JWT refresh
 
-Avoid 401 errors entirely by refreshing the token before it expires. Use `jwtExpiryDate(from:)` to extract the expiry date from the JWT and `preemptiveRefreshLeadTime` to control how far in advance to refresh (default: 60 seconds).
+Avoid 401 errors entirely by refreshing the token before it expires. Use `jwtExpiryDate(from:)` to extract the expiry date from the JWT (store it alongside the token when you sign in) and `preemptiveRefreshLeadTime` to control how far in advance to refresh (default: 60 seconds). All three closures can read the same async source:
 
 ```swift
-// After login, store the token and its expiry
-authStore.accessToken = loginResponse.body.accessToken
-authStore.expiry = jwtExpiryDate(from: loginResponse.body.accessToken)
-
 let service = UserServiceClient(
     baseURL: "https://api.example.com",
-    tokenExpiryDate: { authStore.expiry },
-    preemptiveRefreshLeadTime: 60,   // refresh 60 s before expiry
-    refreshToken: { /* same as above */ },
-    applyToken: { token, request in
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
+    tokenExpiryDate: { await session.expiry },              // e.g. jwtExpiryDate(from: token)
+    preemptiveRefreshLeadTime: 60,                           // refresh 60 s before expiry
+    tokenRefresher: { /* same as above */ },
+    tokenProvider: { await session.authorizationHeader }
 )
 ```
+
+Refresh is **lazy/inline**: the expiry is checked just before each outgoing request, so the token is fresh when it goes out. There is no background timer (an idle app simply refreshes just-in-time on its next request).
 
 ## Key types
 

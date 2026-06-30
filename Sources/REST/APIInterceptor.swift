@@ -9,14 +9,6 @@ actor TokenRefreshCoordinator {
     private(set) var currentToken: String?
     private var ongoingRefresh: Task<String, Error>?
 
-    /// Seeds the coordinator with a stored token when no token is currently held.
-    /// Does not override a freshly refreshed token.
-    func seed(_ token: String) {
-        if currentToken == nil {
-            currentToken = token
-        }
-    }
-
     func refresh(using handler: @escaping @Sendable () async throws -> String) async throws -> String {
         if let existing = ongoingRefresh {
             return try await existing.value
@@ -80,7 +72,7 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
         }
 
         // If no token injection configured, nothing more to do
-        guard let applyToken = configuration.applyToken else {
+        guard configuration.tokenProvider != nil || configuration.tokenRefresher != nil else {
             completion(.success(request))
             return
         }
@@ -94,21 +86,24 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
             do {
                 // Preemptive refresh: if token is about to expire, refresh before sending
                 if let expiryProvider = configuration.tokenExpiryDate,
-                   let expiry = expiryProvider(),
+                   let expiry = await expiryProvider(),
                    expiry.timeIntervalSinceNow < configuration.preemptiveRefreshLeadTime,
-                   let refreshHandler = configuration.refreshToken {
+                   let refreshHandler = configuration.tokenRefresher {
                     _ = try await coordinator.refresh(using: refreshHandler)
                 }
 
-                // Seed coordinator from stored token if not yet set (avoids unnecessary 401 on first request after sign-in)
-                if await coordinator.currentToken == nil,
-                   let getToken = configuration.getToken,
-                   let storedToken = getToken() {
-                    await coordinator.seed(storedToken)
+                // Resolve the token: read `tokenProvider` live on every request (reactive), or fall
+                // back to the last refreshed token in refresher-only mode. The value is written to
+                // the Authorization header verbatim — the closures own the scheme (e.g. "Bearer …").
+                let token: String?
+                if let provider = configuration.tokenProvider {
+                    token = await provider()
+                } else {
+                    token = await coordinator.currentToken
                 }
 
-                if let token = await coordinator.currentToken {
-                    applyToken(token, &req)
+                if let token {
+                    req.setValue(token, forHTTPHeaderField: "Authorization")
                 }
                 completionBox.value(.success(req))
             } catch {
@@ -125,24 +120,22 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
         dueTo error: Error,
         completion: @escaping (RetryResult) -> Void
     ) {
-        guard
-            let retryPolicy = configuration.retryPolicy,
-            request.retryCount < retryPolicy.maxAttempts
-        else {
-            completion(.doNotRetryWithError(error))
-            return
-        }
-
-        // Check for auth failure — refresh token then retry
-        if let isUnauthorized = configuration.isUnauthorized,
-           let httpResponse = request.response,
-           isUnauthorized(httpResponse),
-           let refreshHandler = configuration.refreshToken {
+        // Auth failure handling. Defaults to treating HTTP 401 as the auth failure when no
+        // `isUnauthorized` predicate is supplied (mirrors the TS library's `refreshOn: [401]`).
+        let isAuthFailure = configuration.isUnauthorized ?? { $0.statusCode == 401 }
+        if let httpResponse = request.response, isAuthFailure(httpResponse) {
+            // Refresh + retry exactly once. A still-failing auth response is fatal — we never fall
+            // through to the generic retry, so the refresh endpoint isn't hammered on a persistent
+            // 401. Independent of `retryPolicy`, so auth refresh works even when retry is disabled.
+            guard request.retryCount == 0, let refreshHandler = configuration.tokenRefresher else {
+                completion(.doNotRetryWithError(error))
+                return
+            }
             let completionBox = Box(value: completion)
             Task {
                 do {
                     _ = try await coordinator.refresh(using: refreshHandler)
-                    completionBox.value(.retryWithDelay(retryPolicy.delay))
+                    completionBox.value(.retryWithDelay(configuration.retryPolicy?.delay ?? 0))
                 } catch {
                     completionBox.value(.doNotRetryWithError(error))
                 }
@@ -150,9 +143,17 @@ final class APIInterceptor: RequestInterceptor, @unchecked Sendable {
             return
         }
 
-        // Retry other failures (network errors, server errors, etc.), but only for idempotent
-        // methods. Retrying POST/PATCH after a transport failure risks duplicating a side effect
-        // (e.g. a payment the server already processed before the response was lost).
+        // Generic retry for other failures (network errors, server errors, etc.), bounded by the
+        // retry policy and limited to idempotent methods. Retrying POST/PATCH after a transport
+        // failure risks duplicating a side effect (e.g. a payment the server already processed
+        // before the response was lost).
+        guard
+            let retryPolicy = configuration.retryPolicy,
+            request.retryCount < retryPolicy.maxAttempts
+        else {
+            completion(.doNotRetryWithError(error))
+            return
+        }
         let method = request.request?.httpMethod.flatMap(HTTPMethod.init(rawValue:))
         guard let method, HTTPMethod.idempotentMethods.contains(method) else {
             completion(.doNotRetryWithError(error))

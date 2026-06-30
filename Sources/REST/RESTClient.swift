@@ -17,12 +17,11 @@ public actor RESTClient {
         defaultHeaders: [String: String] = [:],
         retryPolicy: RetryPolicy? = RetryPolicy(),
         maxEntries: Int? = nil,
-        tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+        tokenExpiryDate: (@Sendable () async -> Date?)? = nil,
         preemptiveRefreshLeadTime: TimeInterval = 60,
         isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
-        refreshToken: (@Sendable () async throws -> String)? = nil,
-        applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
-        getToken: (@Sendable () -> String?)? = nil,
+        tokenRefresher: (@Sendable () async throws -> String)? = nil,
+        tokenProvider: (@Sendable () async -> String?)? = nil,
         decoder: JSONDecoder = JSONDecoder(),
         sessionConfiguration: URLSessionConfiguration? = nil
     ) {
@@ -33,9 +32,8 @@ public actor RESTClient {
             tokenExpiryDate: tokenExpiryDate,
             preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
             isUnauthorized: isUnauthorized,
-            refreshToken: refreshToken,
-            applyToken: applyToken,
-            getToken: getToken
+            tokenRefresher: tokenRefresher,
+            tokenProvider: tokenProvider
         )
         let sessionConfig = sessionConfiguration ?? URLSessionConfiguration.af.default
         let interceptor = APIInterceptor(configuration: configuration)
