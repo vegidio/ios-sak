@@ -22,15 +22,15 @@ final class ServiceMacroTests: XCTestCase {
             @Service
             protocol UserService {
                 @Get("users/{id}")
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
             """,
             expandedSource: """
             protocol UserService {
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -78,15 +78,15 @@ final class ServiceMacroTests: XCTestCase {
             @Service
             public protocol UserService {
                 @Get("users")
-                func listUsers(page: Query<Int>) async throws -> RESTResponse<[User]>
+                func listUsers(page: Query<Int>) async throws -> [User]
             }
             """,
             expandedSource: """
             public protocol UserService {
-                func listUsers(page: Query<Int>) async throws -> RESTResponse<[User]>
+                func listUsers(page: Query<Int>) async throws -> [User]
             }
 
-            public struct UserServiceClient: UserService {
+            public struct UserServiceClient {
                 private let client: RESTClient
                 public init(
                     baseURL: String,
@@ -135,15 +135,15 @@ final class ServiceMacroTests: XCTestCase {
             @Service
             protocol UserService {
                 @Post("users")
-                func createUser(user: Body<NewUser>) async throws -> RESTResponse<User>
+                func createUser(user: Body<NewUser>) async throws -> User
             }
             """,
             expandedSource: """
             protocol UserService {
-                func createUser(user: Body<NewUser>) async throws -> RESTResponse<User>
+                func createUser(user: Body<NewUser>) async throws -> User
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -193,15 +193,15 @@ final class ServiceMacroTests: XCTestCase {
             protocol ConfigService {
                 @Get("public/config")
                 @SkipAuth
-                func config() async throws -> RESTResponse<Config>
+                func config() async throws -> Config
             }
             """,
             expandedSource: """
             protocol ConfigService {
-                func config() async throws -> RESTResponse<Config>
+                func config() async throws -> Config
             }
 
-            struct ConfigServiceClient: ConfigService {
+            struct ConfigServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -249,15 +249,15 @@ final class ServiceMacroTests: XCTestCase {
             """
             @Service
             protocol UserService {
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
             """,
             expandedSource: """
             protocol UserService {
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -306,15 +306,15 @@ final class ServiceMacroTests: XCTestCase {
             @Service
             protocol UserService {
                 @Post("users")
-                func createUser(a: Body<NewUser>, b: Body<NewUser>) async throws -> RESTResponse<User>
+                func createUser(a: Body<NewUser>, b: Body<NewUser>) async throws -> User
             }
             """,
             expandedSource: """
             protocol UserService {
-                func createUser(a: Body<NewUser>, b: Body<NewUser>) async throws -> RESTResponse<User>
+                func createUser(a: Body<NewUser>, b: Body<NewUser>) async throws -> User
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -364,15 +364,15 @@ final class ServiceMacroTests: XCTestCase {
             @Cacheable(ttl: 300, maxEntries: 100)
             protocol UserService {
                 @Get("users/{id}")
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
             """,
             expandedSource: """
             protocol UserService {
-                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+                func getUser(id: Path<Int>) async throws -> User
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -422,15 +422,15 @@ final class ServiceMacroTests: XCTestCase {
             protocol UserService {
                 @Get("users")
                 @Cacheable(ttl: 60)
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
             """,
             expandedSource: """
             protocol UserService {
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -480,15 +480,15 @@ final class ServiceMacroTests: XCTestCase {
             protocol UserService {
                 @Get("users")
                 @Cacheable
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
             """,
             expandedSource: """
             protocol UserService {
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -537,19 +537,19 @@ final class ServiceMacroTests: XCTestCase {
             @Cacheable(ttl: 300)
             protocol UserService {
                 @Get("users")
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
                 @Get("health")
                 @NoCache
-                func health() async throws -> RESTResponse<Status>
+                func health() async throws -> Status
             }
             """,
             expandedSource: """
             protocol UserService {
-                func listUsers() async throws -> RESTResponse<[User]>
-                func health() async throws -> RESTResponse<Status>
+                func listUsers() async throws -> [User]
+                func health() async throws -> Status
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -605,15 +605,15 @@ final class ServiceMacroTests: XCTestCase {
             protocol UserService {
                 @Get("users")
                 @Cacheable(maxEntries: 100)
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
             """,
             expandedSource: """
             protocol UserService {
-                func listUsers() async throws -> RESTResponse<[User]>
+                func listUsers() async throws -> [User]
             }
 
-            struct UserServiceClient: UserService {
+            struct UserServiceClient {
                 private let client: RESTClient
                 init(
                     baseURL: String,
@@ -648,6 +648,63 @@ final class ServiceMacroTests: XCTestCase {
             diagnostics: [
                 DiagnosticSpec(
                     message: "maxEntries is only valid on the @Service protocol, not on a method",
+                    line: 3,
+                    column: 5
+                )
+            ],
+            macros: macros
+        )
+    }
+
+    func testExplicitRESTResponseEmitsDiagnostic() {
+        assertMacroExpansion(
+            """
+            @Service
+            protocol UserService {
+                @Get("users/{id}")
+                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+            }
+            """,
+            expandedSource: """
+            protocol UserService {
+                func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+            }
+
+            struct UserServiceClient {
+                private let client: RESTClient
+                init(
+                    baseURL: String,
+                    defaultHeaders: [String: String] = [:],
+                    retryPolicy: RetryPolicy? = RetryPolicy(),
+                    tokenExpiryDate: (@Sendable () -> Date?)? = nil,
+                    preemptiveRefreshLeadTime: TimeInterval = 60,
+                    isUnauthorized: (@Sendable (HTTPURLResponse) -> Bool)? = nil,
+                    refreshToken: (@Sendable () async throws -> String)? = nil,
+                    applyToken: (@Sendable (String, inout URLRequest) -> Void)? = nil,
+                    getToken: (@Sendable () -> String?)? = nil,
+                    decoder: JSONDecoder = JSONDecoder(),
+                    sessionConfiguration: URLSessionConfiguration? = nil
+                ) {
+                    self.client = RESTClient(
+                        baseURL: baseURL,
+                        defaultHeaders: defaultHeaders,
+                        retryPolicy: retryPolicy,
+                        tokenExpiryDate: tokenExpiryDate,
+                        preemptiveRefreshLeadTime: preemptiveRefreshLeadTime,
+                        isUnauthorized: isUnauthorized,
+                        refreshToken: refreshToken,
+                        applyToken: applyToken,
+                        getToken: getToken,
+                        decoder: decoder,
+                        sessionConfiguration: sessionConfiguration
+                    )
+                }
+
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "'getUser' must declare the response body type directly (e.g. 'User'), not 'RESTResponse<…>'",
                     line: 3,
                     column: 5
                 )

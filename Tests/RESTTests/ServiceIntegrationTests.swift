@@ -18,17 +18,17 @@ private struct NewUser: Encodable, Sendable {
 @Service
 private protocol UserService {
     @Get("users/{id}")
-    func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+    func getUser(id: Path<Int>) async throws -> User
 
     @Get("users")
-    func listUsers(page: Query<Int>) async throws -> RESTResponse<[User]>
+    func listUsers(page: Query<Int>) async throws -> [User]
 
     @Post("users")
-    func createUser(user: Body<NewUser>) async throws -> RESTResponse<User>
+    func createUser(user: Body<NewUser>) async throws -> User
 
     @Get("public/config")
     @SkipAuth
-    func config() async throws -> RESTResponse<[String: String]>
+    func config() async throws -> [String: String]
 }
 
 // Service-wide caching, with one method opting out via @NoCache.
@@ -36,11 +36,11 @@ private protocol UserService {
 @Cacheable(ttl: 300)
 private protocol CachedService {
     @Get("users/{id}")
-    func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+    func getUser(id: Path<Int>) async throws -> User
 
     @Get("health")
     @NoCache
-    func health() async throws -> RESTResponse<[String: String]>
+    func health() async throws -> [String: String]
 }
 
 @Suite("@Service generated client", .serialized)

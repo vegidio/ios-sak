@@ -13,17 +13,17 @@ struct NewUser: Encodable, Sendable { let name: String }
 @Service
 protocol UserService {
     @Get("users/{id}")
-    func getUser(id: Path<Int>) async throws -> RESTResponse<User>
+    func getUser(id: Path<Int>) async throws -> User
 
     @Get("users")
-    func listUsers(page: Query<Int>) async throws -> RESTResponse<[User]>
+    func listUsers(page: Query<Int>) async throws -> [User]
 
     @Post("users")
-    func createUser(user: Body<NewUser>) async throws -> RESTResponse<User>
+    func createUser(user: Body<NewUser>) async throws -> User
 
     @Get("public/config")
     @SkipAuth
-    func config() async throws -> RESTResponse<[String: String]>
+    func config() async throws -> [String: String]
 }
 
 // `baseURL` lets the endpoint paths be relative. Each service owns its own configuration.
@@ -34,7 +34,7 @@ let users = try await service.listUsers(page: 1).body
 let created = try await service.createUser(user: NewUser(name: "Bob")).body
 ```
 
-The macro emits a `struct UserServiceClient: UserService` that builds each `RESTRequest` and runs it for you. Every method must be `async throws` and return `RESTResponse<T>`, where `T` is the decoded body type.
+The macro emits a standalone `struct UserServiceClient` that builds each `RESTRequest` and runs it for you. Every method must be `async throws` and declare its decoded body type `T` directly (e.g. `-> User`); the generated client method returns `RESTResponse<T>`, so call sites use `.body`, `.statusCode`, etc. on the result.
 
 ## Annotations
 
@@ -54,10 +54,10 @@ The macro emits a `struct UserServiceClient: UserService` that builds each `REST
 @Service
 protocol ArticleService {
     @Get("articles/{id}")
-    func article(id: Path<Int>, fields: Query<String>) async throws -> RESTResponse<Article>
+    func article(id: Path<Int>, fields: Query<String>) async throws -> Article
 
     @Post("articles")
-    func create(article: Body<NewArticle>, idempotencyKey: Header<String>) async throws -> RESTResponse<Article>
+    func create(article: Body<NewArticle>, idempotencyKey: Header<String>) async throws -> Article
 }
 ```
 
@@ -133,19 +133,19 @@ Responses are cached in memory with `@Cacheable`. It can sit on the `@Service` p
 @Cacheable(ttl: 300, maxEntries: 100)   // default: cache every request for 5 minutes
 protocol CatalogService {
     @Get("products")
-    func products() async throws -> RESTResponse<[Product]>          // inherits → 300 s
+    func products() async throws -> [Product]          // inherits → 300 s
 
     @Get("products/{id}")
     @Cacheable(ttl: 60)
-    func product(id: Path<Int>) async throws -> RESTResponse<Product> // override → 60 s
+    func product(id: Path<Int>) async throws -> Product // override → 60 s
 
     @Get("categories")
     @Cacheable
-    func categories() async throws -> RESTResponse<[Category]>        // cached, never expires
+    func categories() async throws -> [Category]        // cached, never expires
 
     @Get("inventory")
     @NoCache
-    func inventory() async throws -> RESTResponse<Inventory>          // not cached
+    func inventory() async throws -> Inventory          // not cached
 }
 ```
 
@@ -187,7 +187,7 @@ Annotate a method with `@SkipAuth` to opt it out of token injection — useful f
 protocol AuthService {
     @Post("auth/login")
     @SkipAuth
-    func login(credentials: Body<Credentials>) async throws -> RESTResponse<LoginResponse>
+    func login(credentials: Body<Credentials>) async throws -> LoginResponse
 }
 ```
 

@@ -21,8 +21,10 @@ public typealias Header<T> = T
 
 // MARK: - Service & method annotations
 
-/// Generates a `<Protocol>Client` struct implementing the annotated protocol. Each requirement
-/// must carry one HTTP-method annotation and return `RESTResponse<T>`.
+/// Generates a standalone `<Protocol>Client` struct from the annotated protocol (the struct does
+/// not conform to the protocol — it is read purely as a service specification). Each requirement
+/// must carry one HTTP-method annotation and declare its decoded body type `T` directly (e.g.
+/// `-> User`); the generated client method returns `RESTResponse<T>`.
 @attached(peer, names: suffixed(Client))
 public macro Service() = #externalMacro(module: "RESTMacros", type: "ServiceMacro")
 

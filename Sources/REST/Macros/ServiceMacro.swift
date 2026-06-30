@@ -40,7 +40,7 @@ public enum ServiceMacro: PeerMacro {
 
         // Built left-aligned; SwiftBasicFormat re-indents the whole declaration deterministically.
         let source = """
-        \(access)struct \(protocolName)Client: \(protocolName) {
+        \(access)struct \(protocolName)Client {
         private let client: RESTClient
         \(access)init(
         baseURL: String,
@@ -112,10 +112,21 @@ public enum ServiceMacro: PeerMacro {
             context.diagnose(.error("'\(funcName)' must be declared 'async throws'", at: funcDecl))
             return nil
         }
-        guard let returnType = funcDecl.signature.returnClause?.type.trimmedDescription else {
-            context.diagnose(.error("'\(funcName)' must return RESTResponse<T>", at: funcDecl))
+        guard let writtenReturn = funcDecl.signature.returnClause?.type.trimmedDescription else {
+            context.diagnose(.error("'\(funcName)' must declare a return type", at: funcDecl))
             return nil
         }
+        // The method declares the decoded body type directly (e.g. `User`); the generated client
+        // wraps it in `RESTResponse<…>`. Writing the wrapper explicitly is rejected to keep the
+        // service definition uniform and avoid `RESTResponse<RESTResponse<…>>`.
+        guard !writtenReturn.hasPrefix("RESTResponse<") else {
+            context.diagnose(.error(
+                "'\(funcName)' must declare the response body type directly (e.g. 'User'), not 'RESTResponse<…>'",
+                at: funcDecl
+            ))
+            return nil
+        }
+        let returnType = "RESTResponse<\(writtenReturn)>"
 
         // Parameters
         var params: [ParsedParam] = []
@@ -186,7 +197,7 @@ public enum ServiceMacro: PeerMacro {
         if !queryParams.isEmpty {
             args.append("queryParameters: [\(dictLiteralEntries(queryParams))]")
         }
-        if hasSkipAuth(funcDecl) {
+        if hasMarker("SkipAuth", in: funcDecl) {
             args.append("skipAuth: true")
         }
 
@@ -203,16 +214,10 @@ public enum ServiceMacro: PeerMacro {
             ))
             return nil
         }
-        let sendCall: String
-        if hasNoCache(funcDecl) {
-            sendCall = "client.send(request)"
-        } else if let methodCache {
-            sendCall = "client.send(request, cacheable: true, ttl: \(methodCache.ttl ?? "nil"))"
-        } else if let serviceCache {
-            sendCall = "client.send(request, cacheable: true, ttl: \(serviceCache.ttl ?? "nil"))"
-        } else {
-            sendCall = "client.send(request)"
-        }
+        let effectiveCache = hasMarker("NoCache", in: funcDecl) ? nil : (methodCache ?? serviceCache)
+        let sendCall = effectiveCache
+            .map { "client.send(request, cacheable: true, ttl: \($0.ttl ?? "nil"))" }
+            ?? "client.send(request)"
 
         return """
         \(access)func \(funcName)(\(signatureParams)) async throws -> \(returnType) {
@@ -262,10 +267,11 @@ public enum ServiceMacro: PeerMacro {
         return nil
     }
 
-    private static func hasSkipAuth(_ funcDecl: FunctionDeclSyntax) -> Bool {
+    /// Whether the function carries a marker attribute named `name` (e.g. `@SkipAuth`, `@NoCache`).
+    private static func hasMarker(_ name: String, in funcDecl: FunctionDeclSyntax) -> Bool {
         funcDecl.attributes.contains { attribute in
             attribute.as(AttributeSyntax.self)?
-                .attributeName.as(IdentifierTypeSyntax.self)?.name.text == "SkipAuth"
+                .attributeName.as(IdentifierTypeSyntax.self)?.name.text == name
         }
     }
 
@@ -296,13 +302,6 @@ public enum ServiceMacro: PeerMacro {
             return CacheableArgs(ttl: ttl, maxEntries: maxEntries)
         }
         return nil
-    }
-
-    private static func hasNoCache(_ funcDecl: FunctionDeclSyntax) -> Bool {
-        funcDecl.attributes.contains { attribute in
-            attribute.as(AttributeSyntax.self)?
-                .attributeName.as(IdentifierTypeSyntax.self)?.name.text == "NoCache"
-        }
     }
 
     private static func marker(of type: TypeSyntax) -> (kind: ParamKind, inner: String)? {
